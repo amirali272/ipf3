@@ -1,0 +1,46 @@
+[Unit]
+Description=IPF3 Network Monitor background worker (schedules, alerts, retention)
+After=network-online.target postgresql.service ipf3-api.service
+Wants=network-online.target
+Requires=postgresql.service
+
+[Service]
+Type=exec
+User=ipf3
+Group=ipf3
+EnvironmentFile=/etc/ipf3/server.env
+ExecStart=/opt/ipf3/venv/bin/ipf3-server worker
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+
+UMask=0027
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateUsers=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+# AF_INET/6 for webhooks and SMTP notifications.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RemoveIPC=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+ReadOnlyPaths=/opt/ipf3 /etc/ipf3
+
+[Install]
+WantedBy=multi-user.target

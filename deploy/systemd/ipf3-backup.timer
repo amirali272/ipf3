@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily IPF3 backup
+
+[Timer]
+OnCalendar=*-*-* 02:17:00
+RandomizedDelaySec=15m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

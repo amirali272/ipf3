@@ -1,0 +1,49 @@
+[Unit]
+Description=IPF3 monitoring and network test agent
+Documentation=https://github.com/amirali272/ipf3
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=ipf3-agent
+Group=ipf3-agent
+ExecStart=/opt/ipf3-agent/venv/bin/ipf3-agent --config /etc/ipf3/agent.json run
+Restart=on-failure
+RestartSec=5
+# Exit 78 = credentials rejected by the server: do not hammer it.
+RestartPreventExitStatus=78
+
+# Least privilege: the only capability is CAP_NET_RAW, required for ICMP/TCP
+# traceroute and MTR probes. Everything else (metrics from /proc, iproute2
+# netlink queries, ss without -p, iperf3 client, DNS) runs unprivileged.
+AmbientCapabilities=CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_RAW
+NoNewPrivileges=yes
+UMask=0077
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RemoveIPC=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+ReadOnlyPaths=/
+InaccessiblePaths=-/root -/var/lib/postgresql -/etc/ssh -/etc/shadow -/etc/gshadow
+LimitNOFILE=8192
+TasksMax=128
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,10 @@
+[Unit]
+Description=IPF3 database and configuration backup
+After=postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/ipf3/deploy/backup.sh
+Nice=10
+IOSchedulingClass=idle
