@@ -1,5 +1,7 @@
 # IPF3 — Network Monitoring & Performance Testing
 
+**English** | [فارسی](README.fa.md)
+
 IPF3 is a self-hosted platform for monitoring a fleet of Ubuntu servers and running
 network performance tests between them. It's built around **iperf3**: the agent runs
 it with JSON output, and the server parses and stores the results. The web dashboard
