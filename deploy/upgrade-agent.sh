@@ -12,6 +12,10 @@ chown root:ipf3-agent /etc/ipf3/agent.json && chmod 0640 /etc/ipf3/agent.json
 "$PREFIX/venv/bin/pip" install -q --no-deps --force-reinstall "$REPO/agent"
 install -m 0644 "$REPO/deploy/systemd/ipf3-agent.service" /etc/systemd/system/
 [[ -f /etc/systemd/system/ipf3-iperf3.service ]] && install -m 0644 "$REPO/deploy/systemd/ipf3-iperf3.service" /etc/systemd/system/
+if [[ -d /etc/ipf3/xray ]]; then
+  chown ipf3-agent:ipf3-xray /etc/ipf3/xray && chmod 2750 /etc/ipf3/xray
+  find /etc/ipf3/xray -maxdepth 1 -type f -exec chgrp ipf3-xray {} + -exec chmod 0640 {} +
+fi
 if [[ -f /etc/systemd/system/ipf3-xray.service ]]; then
   install -m 0644 "$REPO/deploy/systemd/ipf3-xray.service" "$REPO/deploy/systemd/ipf3-xray-config.path" \
     "$REPO/deploy/systemd/ipf3-xray-reload.service" /etc/systemd/system/

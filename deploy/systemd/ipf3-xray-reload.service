@@ -5,4 +5,5 @@ StartLimitBurst=20
 
 [Service]
 Type=oneshot
+ExecStart=-/bin/systemctl reset-failed ipf3-xray.service
 ExecStart=/bin/systemctl restart ipf3-xray.service

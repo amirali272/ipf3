@@ -36,8 +36,12 @@ install -m 0644 "$TMP/x/geoip.dat" "$TMP/x/geosite.dat" /usr/local/share/xray/
 ensure_system_user ipf3-xray /nonexistent
 ensure_etc_dir
 id -u ipf3-agent >/dev/null 2>&1 || ensure_system_user ipf3-agent /opt/ipf3-agent
-# Agent writes the config, Xray reads it.
-install -d -m 0750 -o ipf3-agent -g ipf3-xray /etc/ipf3/xray
+# Agent writes the config, Xray reads it. setgid: files the agent creates inherit
+# group ipf3-xray, otherwise Xray could not read the config.
+install -d -m 2750 -o ipf3-agent -g ipf3-xray /etc/ipf3/xray
+chown ipf3-agent:ipf3-xray /etc/ipf3/xray
+chmod 2750 /etc/ipf3/xray
+find /etc/ipf3/xray -maxdepth 1 -type f -exec chgrp ipf3-xray {} + -exec chmod 0640 {} +
 if [[ ! -f /etc/ipf3/xray/config.json ]]; then
   # Minimal placeholder until the panel sends the real config (API only, no open ports).
   cat > /etc/ipf3/xray/config.json <<'JSON'

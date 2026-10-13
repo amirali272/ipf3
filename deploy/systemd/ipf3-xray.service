@@ -4,6 +4,8 @@ Documentation=https://xtls.github.io
 After=network-online.target
 Wants=network-online.target
 ConditionPathExists=/etc/ipf3/xray/config.json
+# Keep retrying (e.g. after a port conflict is fixed) instead of giving up.
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple

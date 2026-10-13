@@ -321,6 +321,12 @@ function NodeCard({ n }: { n: VpnNode }) {
         {n.applied_at && <span>applied {fmtRelative(n.applied_at)}</span>}
       </div>
       {n.error && <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap rounded-lg bg-red-950/30 p-2 text-[11px] text-red-300">{n.error}</pre>}
+      {state === "stopped" && (
+        <p className="mt-2 text-xs text-ink-400">
+          Xray could not start. Common causes: the port is already in use (e.g. 443 on the panel server) or a TLS file is unreadable.
+          On the server run <span className="mono">journalctl -u ipf3-xray -n 30</span> to see why.
+        </p>
+      )}
       {state === "missing" && <p className="mt-2 text-xs text-ink-500">On this server run <span className="mono">sudo ./install.sh</span> → Upgrade, and answer yes to “VPN node”.</p>}
     </div>
   );
