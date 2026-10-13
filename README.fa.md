@@ -153,17 +153,37 @@ sudo ./deploy/restore.sh /var/backups/ipf3/ipf3-db-<تاریخ>.dump \
 
 <div dir="rtl">
 
-## حذف ایجنت
+## حذف کامل
+
+دستور نصب را اجرا کنید و گزینهٔ **5 — Uninstall completely** را بزنید، یا مستقیم:
 
 </div>
 
 ```bash
-sudo ./deploy/uninstall-agent.sh
+cd ~/ipf3 && git pull
+sudo ./deploy/uninstall.sh
 ```
 
 <div dir="rtl">
 
-سپس سرور را از **Servers ← (نام سرور) ← Settings** در رابط وب حذف کنید.
+برای تأیید باید کلمهٔ `DELETE` را تایپ کنید. این‌ها حذف می‌شوند: سرویس‌ها، دیتابیس و همهٔ اطلاعات (کاربران، تاریخچه، آمار مصرف)، تنظیمات و کلیدها (`/etc/ipf3`)، فایل‌های برنامه، سایت nginx، گواهی SSL دامنه، کاربرهای سیستمی و لاگ‌ها.
+
+دو چیز را می‌پرسد:
+- بکاپ‌های `/var/backups/ipf3` هم حذف شوند؟
+- بسته‌های نصب‌شده (postgresql، nginx، certbot، iperf3، …) هم حذف شوند؟ فقط وقتی «بله» بزنید که برنامهٔ دیگری روی سرور از آن‌ها استفاده نمی‌کند.
+
+حذف بدون هیچ سؤالی (همه‌چیز همراه بکاپ‌ها و بسته‌ها):
+
+</div>
+
+```bash
+sudo ./deploy/uninstall.sh --yes --remove-backups --remove-packages
+rm -rf ~/ipf3
+```
+
+<div dir="rtl">
+
+اگر فقط ایجنت را از یک سرور حذف می‌کنید، بعدش آن سرور را از پنل هم پاک کنید: **Servers ← نام سرور ← Settings ← Delete**.
 
 ## رفع مشکلات رایج
 

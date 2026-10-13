@@ -79,6 +79,7 @@ The menu offers these choices:
    enrollment token (Servers → Enroll server). A self-signed panel certificate is
    detected, and its fingerprint is shown for you to confirm.
 4. **Upgrade an existing installation.** Takes a backup first, then runs migrations.
+5. **Uninstall completely.** Removes the panel and agent, the database, configuration, the nginx site and certificates. You type `DELETE` to confirm. Backups and shared packages are kept unless you choose to remove them. To run it directly: `sudo ./deploy/uninstall.sh`.
 
 Internally, services, paths and the database keep the `ipf3` name (`ipf3-api`,
 `/etc/ipf3`, …), so existing installations upgrade in place. Non-interactive

@@ -290,6 +290,7 @@ choose MODE \
   "Install panel only" \
   "Add this server to an existing panel  ${GR}(agent)${R}" \
   "Upgrade an existing installation" \
+  "Uninstall completely" \
   "Exit"
 
 case "$MODE" in
@@ -374,6 +375,10 @@ case "$MODE" in
     if [[ -f /etc/ipf3/agent.json ]]; then found=1; run_step "Upgrading agent" "$REPO/deploy/upgrade-agent.sh"; fi
     [[ $found -eq 1 ]] || fail "No existing installation found on this server."
     printf '\n'; ok "Upgraded to version $VERSION"
+    ;;
+  5)
+    "$REPO/deploy/uninstall.sh"
+    exit $?
     ;;
   *) exit 0 ;;
 esac

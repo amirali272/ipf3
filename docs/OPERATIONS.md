@@ -112,6 +112,19 @@ sudo -u postgres psql -d ipf3 -c "VACUUM (FULL, ANALYZE) metric_samples, interfa
 
 `VACUUM FULL` takes exclusive locks, so run it in a maintenance window.
 
+## Uninstalling
+
+```bash
+sudo ./deploy/uninstall.sh            # asks for confirmation (type DELETE)
+sudo ./deploy/uninstall.sh --yes --remove-backups --remove-packages   # no questions, remove everything
+```
+
+This removes the panel and/or agent: services, the database and role, `/etc/ipf3`,
+`/opt/ipf3*`, the nginx site, the panel's Let's Encrypt certificate, the service
+accounts and the install log. Backups and shared packages (postgresql, nginx, …) are
+kept unless you ask for them to be removed. `./install.sh` → **Uninstall completely**
+does the same.
+
 ## Troubleshooting
 
 | Symptom | Check |
