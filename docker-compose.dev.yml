@@ -1,0 +1,15 @@
+# Development database only. Production uses the native Ubuntu PostgreSQL
+# package configured by deploy/install-server.sh.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ipf3
+      POSTGRES_PASSWORD: ipf3
+      POSTGRES_DB: ipf3
+    ports: ["127.0.0.1:5432:5432"]
+    volumes:
+      - ipf3-pg:/var/lib/postgresql/data
+      - ./scripts/dev-init-test-db.sql:/docker-entrypoint-initdb.d/10-test-db.sql:ro
+volumes:
+  ipf3-pg:

@@ -11,5 +11,16 @@ export default defineConfig({
       "/api": { target: backend, ws: true, changeOrigin: false },
     },
   },
-  build: { outDir: "dist", sourcemap: false, chunkSizeWarningLimit: 900 },
+  build: {
+    outDir: "dist",
+    sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ["react", "react-dom", "react-router-dom", "@tanstack/react-query"],
+          charts: ["recharts"],
+        },
+      },
+    },
+  },
 });

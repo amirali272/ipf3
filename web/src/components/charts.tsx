@@ -77,7 +77,7 @@ export function TimeChart<T extends object>({
   empty = "No data reported in this period.",
 }: Props<T>) {
   if (!data.length) return <div className="flex items-center justify-center text-sm text-ink-500" style={{ height }}>{empty}</div>;
-  const showDots = data.length <= 40 ? { r: 3, strokeWidth: 0 } : false;
+  const dotsFor = (color: string) => (data.length <= 40 ? { r: 3, strokeWidth: 0, fill: color } : false);
   const common = {
     data,
     margin: { top: 6, right: 8, bottom: 0, left: 0 },
@@ -135,7 +135,7 @@ export function TimeChart<T extends object>({
                 stroke={s.color ?? SERIES[i]}
                 strokeWidth={2}
                 fill={`url(#grad-${s.key})`}
-                dot={showDots}
+                dot={dotsFor(s.color ?? SERIES[i])}
                 activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--surface)" }}
                 isAnimationActive={false}
                 connectNulls={false}
@@ -153,7 +153,7 @@ export function TimeChart<T extends object>({
                 name={s.label}
                 stroke={s.color ?? SERIES[i]}
                 strokeWidth={2}
-                dot={showDots}
+                dot={dotsFor(s.color ?? SERIES[i])}
                 activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--surface)" }}
                 isAnimationActive={false}
                 connectNulls={false}
