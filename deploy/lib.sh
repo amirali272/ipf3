@@ -38,6 +38,15 @@ python_ok() {
   python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)'
 }
 
+# /etc/ipf3 is shared by the server and the agent when both run on one host, so
+# the directory itself stays world-traversable and each secret file carries its
+# own owner/group/mode (server.env root:ipf3 0640, agent.json root:ipf3-agent 0640).
+ensure_etc_dir() {
+  install -d -m 0755 -o root -g root /etc/ipf3
+  chown root:root /etc/ipf3
+  chmod 0755 /etc/ipf3
+}
+
 # Run ipf3-server as the service account with the production environment.
 ipf3_cli() {
   runuser -u ipf3 -- bash -c 'set -a; . /etc/ipf3/server.env; set +a; exec /opt/ipf3/venv/bin/ipf3-server "$@"' ipf3-server "$@"

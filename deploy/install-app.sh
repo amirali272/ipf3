@@ -49,6 +49,9 @@ install -d -m 0755 "$PREFIX/deploy"
 install -m 0755 "$REPO/deploy/lib.sh" "$REPO/deploy/backup.sh" "$REPO/deploy/restore.sh" "$PREFIX/deploy/"
 cp "$REPO/VERSION" "$PREFIX/VERSION"
 
+ensure_etc_dir
+[[ -f /etc/ipf3/server.env ]] && chown root:ipf3 /etc/ipf3/server.env && chmod 0640 /etc/ipf3/server.env
+
 # Daily/monthly traffic totals follow the server's local calendar.
 if [[ -f /etc/ipf3/server.env ]] && ! grep -q '^IPF3_USAGE_TIMEZONE=' /etc/ipf3/server.env; then
   TZ_NAME=$(timedatectl show -p Timezone --value 2>/dev/null || cat /etc/timezone 2>/dev/null || echo UTC)

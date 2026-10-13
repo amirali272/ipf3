@@ -42,7 +42,7 @@ What the script does:
    build the UI: it comes from the Ubuntu archive on 24.04 and from the signed NodeSource
    repository on 22.04.
 2. Creates the `ipf3` system account (no shell, no home), `/opt/ipf3` (root-owned code),
-   and `/etc/ipf3` (`root:ipf3 0750`).
+   and `/etc/ipf3` (`root:root 0755`; secret files inside are `0640`: `server.env` group `ipf3`, `agent.json` group `ipf3-agent`, so the server and an agent can share a host).
 3. Creates a PostgreSQL role and database `ipf3` with **peer authentication over the Unix
    socket**. There's no database password to leak. The role isn't a superuser, and
    `PUBLIC` privileges are revoked.

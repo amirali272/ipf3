@@ -52,7 +52,7 @@ python_ok || die "Python >= 3.10 is required"
 info "Creating service account"
 ensure_system_user ipf3-agent "$PREFIX"
 install -d -m 0755 -o root -g root "$PREFIX"
-install -d -m 0750 -o root -g ipf3-agent /etc/ipf3
+ensure_etc_dir
 
 info "Installing agent into $PREFIX"
 [[ -x "$PREFIX/venv/bin/python" ]] || python3 -m venv "$PREFIX/venv"

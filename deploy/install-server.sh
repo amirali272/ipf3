@@ -102,7 +102,7 @@ fi
 info "Creating service account and directories"
 ensure_system_user ipf3 "$PREFIX"
 install -d -m 0755 -o root -g root "$PREFIX" "$PREFIX/deploy"
-install -d -m 0750 -o root -g ipf3 "$ETC"
+ensure_etc_dir
 install -d -m 0700 -o postgres -g postgres /var/backups/ipf3
 
 info "Configuring PostgreSQL (unix-socket peer authentication, no password)"

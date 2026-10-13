@@ -6,6 +6,8 @@ require_root
 REPO="$(repo_root)"
 PREFIX=/opt/ipf3-agent
 [[ -f /etc/ipf3/agent.json ]] || die "agent is not installed/enrolled (run install-agent.sh)"
+ensure_etc_dir
+chown root:ipf3-agent /etc/ipf3/agent.json && chmod 0640 /etc/ipf3/agent.json
 "$PREFIX/venv/bin/pip" install -q -r "$REPO/agent/requirements.lock"
 "$PREFIX/venv/bin/pip" install -q --no-deps --force-reinstall "$REPO/agent"
 install -m 0644 "$REPO/deploy/systemd/ipf3-agent.service" /etc/systemd/system/

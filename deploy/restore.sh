@@ -29,7 +29,8 @@ read -r -p "This REPLACES the current IPF3 database. Type 'restore' to continue:
 systemctl stop ipf3-worker.service ipf3-api.service
 if [[ -n "$CONFIG" ]]; then
   tar -C / -xzf "$CONFIG" etc/ipf3
-  chown -R root:ipf3 /etc/ipf3 && chmod 0750 /etc/ipf3 && chmod 0640 /etc/ipf3/server.env
+  chown root:root /etc/ipf3 && chmod 0755 /etc/ipf3 && chown root:ipf3 /etc/ipf3/server.env && chmod 0640 /etc/ipf3/server.env
+  [[ -f /etc/ipf3/agent.json ]] && chown root:ipf3-agent /etc/ipf3/agent.json && chmod 0640 /etc/ipf3/agent.json
 fi
 TMP_DUMP=$(mktemp /tmp/ipf3-restore.XXXXXX)
 install -m 0600 -o postgres -g postgres "$DUMP" "$TMP_DUMP"
