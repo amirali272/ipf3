@@ -25,3 +25,11 @@ async def test_time_range_validation(viewer, admin, anon):
     agent_id, _ = await enroll_agent(admin, anon)
     r = await viewer.get(f"/api/v1/agents/{agent_id}/metrics", params={"from": "2026-01-02T00:00:00Z", "to": "2026-01-01T00:00:00Z"})
     assert r.status_code == 422
+
+
+async def test_cli_enrollment_token(anon):
+    from ipf3_server.cli import _create_enrollment_token
+
+    token = await _create_enrollment_token("cli-test", 1)
+    r = await anon.post("/api/agent/v1/enroll", json={"enrollment_token": token, "name": "from-cli", "system": {"hostname": "h"}})
+    assert r.status_code == 201

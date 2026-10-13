@@ -1,10 +1,12 @@
 <div dir="rtl">
 
-# IPF3 — مانیتورینگ شبکه و تست کارایی
+# Unknown Monitor
+
+مانیتورینگ شبکه، مصرف لحظه‌ای ترافیک و تست کارایی برای سرورهای اوبونتو
 
 [English](README.md) | **فارسی**
 
-IPF3 یک پلتفرم خودمیزبان (self-hosted) برای مانیتورینگ مجموعه‌ای از سرورهای اوبونتو و اجرای تست‌های کارایی شبکه بین آن‌هاست. هستهٔ آن **iperf3** است: ایجنت، iperf3 را با خروجی JSON اجرا می‌کند و سرور نتایج را تحلیل و ذخیره می‌کند. داشبورد وب تم تیره (زغالی) با رنگ‌های سبز زمردی دارد.
+Unknown Monitor یک پلتفرم خودمیزبان (self-hosted) برای مانیتورینگ مجموعه‌ای از سرورهای اوبونتو و اجرای تست‌های کارایی شبکه بین آن‌هاست. هستهٔ آن **iperf3** است: ایجنت، iperf3 را با خروجی JSON اجرا می‌کند و سرور نتایج را تحلیل و ذخیره می‌کند. داشبورد وب تم تیره (زغالی) با رنگ‌های سبز زمردی دارد.
 
 همهٔ اعداد روی صفحه از اندازه‌گیری واقعی می‌آیند: شمارنده‌های کرنل، `/proc`، iproute2، iperf3، ping، traceroute، mtr یا یک کوئری واقعی DNS. هیچ دادهٔ ساختگی یا درون‌یابی‌شده‌ای نمایش داده نمی‌شود؛ اگر گزارشی نرسد، روی نمودار هم جای خالی می‌ماند.
 
@@ -51,143 +53,74 @@ IPF3 یک پلتفرم خودمیزبان (self-hosted) برای مانیتور�
 
 ## پیش‌نیازها
 
-- **Ubuntu 22.04 LTS یا 24.04 LTS** (x86_64 یا arm64) برای سرور اصلی و ایجنت‌ها
-- یک نام دامنه که به سرور اصلی اشاره کند (برای Let's Encrypt)، یا گواهی خودتان، یا گواهی self-signed
-- پورت ورودی TCP 443 روی سرور اصلی (و 80 فقط برای Let's Encrypt)
-- دسترسی root (sudo)
+- سرور **Ubuntu 22.04 یا 24.04**
+- دسترسی root
+- برای SSL رایگان و خودکار: یک دامنه یا ساب‌دامنه با رکورد A که به IP سرور اشاره کند. بدون دامنه هم با IP نصب می‌شود.
 
-## نصب
-
-### ۱. نصب سرور اصلی (کنترل‌پنل)
+## نصب (فقط یک دستور)
 
 </div>
 
 ```bash
-# دریافت کد
-sudo apt-get update && sudo apt-get install -y git
-git clone https://github.com/amirali272/ipf3.git
-cd ipf3
-
-# نصب با گواهی Let's Encrypt (دامنه باید به این سرور اشاره کند)
-sudo ./deploy/install-server.sh --domain ipf3.example.com --tls letsencrypt --email ops@example.com
+bash <(curl -fsSL https://raw.githubusercontent.com/amirali272/ipf3/claude/gracious-ramanujan-enb5r9/install.sh)
 ```
 
 <div dir="rtl">
 
-روش‌های دیگر TLS:
+یا اگر مخزن را دارید:
 
 </div>
 
 ```bash
-# گواهی self-signed (مثلاً وقتی فقط IP دارید)
-sudo ./deploy/install-server.sh --domain 10.0.0.5 --tls self-signed
-
-# گواهی موجود خودتان
-sudo ./deploy/install-server.sh --domain ipf3.corp --tls existing \
-     --cert /path/fullchain.pem --key /path/privkey.pem
-
-# فعال‌کردن فایروال ufw (باز کردن SSH و 80 و 443)
-sudo ./deploy/install-server.sh --domain ipf3.example.com --tls letsencrypt --email ops@example.com --ufw
+git clone -b claude/gracious-ramanujan-enb5r9 https://github.com/amirali272/ipf3.git
+cd ipf3 && sudo ./install.sh
 ```
 
 <div dir="rtl">
 
-| گزینه | توضیح |
+نصب‌کننده یک منو نشان می‌دهد:
+
+| گزینه | کاربرد |
 |---|---|
-| `--domain` | نام دامنه یا IP سرور (الزامی) |
-| `--tls` | `letsencrypt` یا `self-signed` یا `existing` (پیش‌فرض: self-signed) |
-| `--email` | ایمیل برای Let's Encrypt |
-| `--cert` / `--key` | مسیر گواهی و کلید برای حالت `existing` |
-| `--admin-user` | نام کاربر مدیر اولیه (پیش‌فرض `admin`) |
-| `--workers` | تعداد پروسس‌های API (پیش‌فرض ۲) |
-| `--ufw` | فعال‌سازی فایروال و باز کردن پورت‌های لازم |
-| `--skip-web-build` | استفاده از `web/dist` آماده، بدون نیاز به Node.js |
+| **1 — Install panel + agent on this server** | برای سرور اول: پنل نصب می‌شود و همین سرور هم مانیتور می‌شود |
+| **2 — Install panel only** | فقط پنل |
+| **3 — Add this server to an existing panel** | اضافه کردن سرورهای دیگر به پنل |
+| **4 — Upgrade an existing installation** | ارتقا به نسخهٔ جدید (قبلش خودکار بکاپ گرفته می‌شود) |
 
-اسکریپت PostgreSQL، nginx، API، worker و رابط وب را نصب می‌کند و در پایان **رمز عبور مدیر را فقط یک بار** چاپ می‌کند. آن را یادداشت کنید و بعد از اولین ورود، از بخش **Account** تغییر دهید.
+برای نصب پنل فقط این‌ها پرسیده می‌شود:
 
-بررسی سلامت سرور:
+۱. **دامنه یا IP**: مثلاً `monitor.yourdomain.com`. اگر دامنه به سرور اشاره کند، گواهی SSL رایگان Let's Encrypt خودکار گرفته می‌شود. اگر نشود، خودکار گواهی self-signed ساخته می‌شود و نصب متوقف نمی‌شود.
+۲. **ایمیل** برای اطلاع‌رسانی انقضای SSL (اختیاری)
+۳. **نام کاربری و رمز مدیر**: رمز حداقل ۱۲ کاراکتر و شامل سه مورد از این‌ها: حرف کوچک، حرف بزرگ، عدد، علامت
+۴. **منطقهٔ زمانی** برای آمار روزانه و ماهانه، مثلاً `Asia/Tehran`
+۵. **فایروال** (اختیاری)
 
-</div>
+قبل از شروع، یک خلاصه نمایش داده می‌شود. در پایان آدرس پنل و نام کاربری نمایش داده می‌شود.
 
-```bash
-systemctl status ipf3-api ipf3-worker
-curl -fsS https://ipf3.example.com/healthz
-```
+### اضافه کردن سرورهای دیگر
 
-<div dir="rtl">
+۱. در پنل به **Servers ← Enroll server** بروید و یک توکن بسازید.
+۲. روی سرور جدید همان دستور نصب را اجرا کنید و گزینهٔ **3** را بزنید.
+۳. آدرس پنل و توکن را وارد کنید.
 
-### ۲. نصب ایجنت روی هر سرور
+اگر پنل گواهی self-signed داشته باشد، نصب‌کننده اثر انگشت گواهی را نشان می‌دهد تا با پیام پایان نصب پنل مقایسه و تأیید کنید.
 
-۱. در رابط وب وارد شوید و به **Servers ← Enroll server** بروید و یک توکن بسازید (یک‌بارمصرف است و ۲۴ ساعت اعتبار دارد).
-
-۲. روی سروری که می‌خواهید مانیتور شود اجرا کنید:
+### نصب دستی و غیرتعاملی (پیشرفته)
 
 </div>
 
 ```bash
-sudo apt-get update && sudo apt-get install -y git
-git clone https://github.com/amirali272/ipf3.git
-cd ipf3
-
-sudo ./deploy/install-agent.sh \
-  --server https://ipf3.example.com \
-  --token ipf3e_XXXXXXXXXXXX \
-  --name server-1 \
-  --iperf3-server
+sudo IPF3_ADMIN_PASSWORD='Your-Strong-Pass1!' ./deploy/install-server.sh --domain monitor.yourdomain.com --tls auto --timezone Asia/Tehran
+sudo ./deploy/install-agent.sh --server https://monitor.yourdomain.com --token ipf3e_XXXX --name server-1
 ```
 
 <div dir="rtl">
 
-| گزینه | توضیح |
-|---|---|
-| `--server` | آدرس HTTPS سرور اصلی (الزامی) |
-| `--token` | توکن ثبت‌نام از رابط وب (الزامی) |
-| `--name` | نام ایجنت (پیش‌فرض: hostname) |
-| `--iperf3-server` | اجرای یک سرور iperf3 روی این میزبان تا سرورهای دیگر بتوانند تست سرعت به آن بزنند |
-| `--iperf3-port` | پورت iperf3 (پیش‌فرض 5201) |
-| `--ca-file` | اگر سرور اصلی گواهی self-signed دارد، فایل `/etc/ipf3/tls/server.crt` سرور اصلی را اینجا کپی و معرفی کنید |
-| `--reenroll` | ثبت‌نام مجدد با توکن جدید |
-
-اگر سرور اصلی self-signed است، ابتدا گواهی را کپی کنید:
-
-</div>
-
-```bash
-# روی سرور ایجنت
-scp root@ipf3-server:/etc/ipf3/tls/server.crt ./server.crt
-sudo ./deploy/install-agent.sh --server https://10.0.0.5 --token ipf3e_XXXX --ca-file ./server.crt --iperf3-server
-```
-
-<div dir="rtl">
-
-بررسی ایجنت:
-
-</div>
-
-```bash
-systemctl status ipf3-agent
-journalctl -u ipf3-agent -f
-sudo -u ipf3-agent /opt/ipf3-agent/venv/bin/ipf3-agent check
-```
-
-<div dir="rtl">
-
-بعد از حدود ۱۰ ثانیه سرور در رابط وب **Online** می‌شود و نمودارها پر می‌شوند.
-
-### ۳. محدود کردن دسترسی به iperf3
-
-iperf3 به‌صورت پیش‌فرض احراز هویت ندارد. پورت آن را (TCP و UDP) فقط برای سرورهایی که تست می‌زنند باز کنید:
-
-</div>
-
-```bash
-sudo ufw allow from 10.20.0.0/16 to any port 5201 proto tcp
-sudo ufw allow from 10.20.0.0/16 to any port 5201 proto udp
-```
-
-<div dir="rtl">
+نام سرویس‌ها و مسیرها داخل سیستم همچنان `ipf3` است (`ipf3-api`، `ipf3-agent`، `/etc/ipf3`) تا نصب‌های قبلی بدون مشکل ارتقا پیدا کنند.
 
 ## ارتقا (Upgrade)
+
+ساده‌ترین راه: همان دستور نصب را اجرا کنید و گزینهٔ **4** را بزنید. یا به‌صورت دستی:
 
 </div>
 

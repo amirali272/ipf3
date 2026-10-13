@@ -38,4 +38,4 @@ test-web:
 	cd web && npm run typecheck && npm test
 
 lint:
-	shellcheck -x -S warning deploy/*.sh
+	shellcheck -x -S warning install.sh deploy/*.sh

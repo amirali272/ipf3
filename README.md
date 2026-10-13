@@ -1,8 +1,10 @@
-# IPF3 — Network Monitoring & Performance Testing
+# Unknown Monitor
+
+Network monitoring, live traffic consumption and performance testing for Ubuntu servers.
 
 **English** | [فارسی](README.fa.md)
 
-IPF3 is a self-hosted platform for monitoring a fleet of Ubuntu servers and running
+Unknown Monitor is a self-hosted platform for monitoring a fleet of Ubuntu servers and running
 network performance tests between them. It's built around **iperf3**: the agent runs
 it with JSON output, and the server parses and stores the results. The web dashboard
 uses a dark charcoal theme with emerald accents.
@@ -51,29 +53,37 @@ over HTTPS and reports the raw tool output. The server parses that output, which
 also stored for audit, and keeps denormalised summary columns for fast analytics.
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-## Quick start (production, Ubuntu 22.04 / 24.04)
+## Installation (Ubuntu 22.04 / 24.04)
 
-On the control-plane host:
-
-```bash
-git clone https://github.com/amirali272/ipf3.git && cd ipf3
-sudo ./deploy/install-server.sh --domain ipf3.example.com --tls letsencrypt --email ops@example.com
-# or: --tls self-signed  |  --tls existing --cert fullchain.pem --key privkey.pem
-```
-
-The script installs PostgreSQL, nginx, the API, the worker and the web UI, and prints
-the initial admin password once. Sign in, open **Servers → Enroll server**, and copy the
-command it shows. Then run it on each monitored host:
+Run one command as root and answer a few questions: domain, administrator username
+and password, and timezone. The installer configures everything else, including a free
+Let's Encrypt certificate when the domain points to the server.
 
 ```bash
-git clone https://github.com/amirali272/ipf3.git && cd ipf3
-sudo ./deploy/install-agent.sh --server https://ipf3.example.com --token ipf3e_… --iperf3-server
+bash <(curl -fsSL https://raw.githubusercontent.com/amirali272/ipf3/claude/gracious-ramanujan-enb5r9/install.sh)
 ```
 
-`--iperf3-server` also starts a sandboxed `iperf3 -s` on the host, so other servers can
-run speed tests against it.
+Or from a checkout:
 
-Full instructions: [docs/INSTALL.md](docs/INSTALL.md).
+```bash
+git clone -b claude/gracious-ramanujan-enb5r9 https://github.com/amirali272/ipf3.git
+cd ipf3 && sudo ./install.sh
+```
+
+The menu offers these choices:
+
+1. **Install panel + agent on this server.** Use this for the first server: you get the
+   panel and this server is monitored immediately.
+2. **Install panel only.**
+3. **Add this server to an existing panel.** Asks for the panel address and an
+   enrollment token (Servers → Enroll server). A self-signed panel certificate is
+   detected, and its fingerprint is shown for you to confirm.
+4. **Upgrade an existing installation.** Takes a backup first, then runs migrations.
+
+Internally, services, paths and the database keep the `ipf3` name (`ipf3-api`,
+`/etc/ipf3`, …), so existing installations upgrade in place. Non-interactive
+installation is still available through `deploy/install-server.sh` and
+`deploy/install-agent.sh`; see [docs/INSTALL.md](docs/INSTALL.md).
 
 ## Documentation
 

@@ -1,4 +1,5 @@
-import { Activity, Lock } from "lucide-react";
+import { Lock } from "lucide-react";
+import { Brand, Logo } from "../components/Layout";
 import { useState, type FormEvent } from "react";
 import { ErrorText } from "../components/ui";
 import { useAuth } from "../lib/auth";
@@ -27,14 +28,13 @@ export default function Login() {
     <div className="flex min-h-full items-center justify-center bg-[radial-gradient(ellipse_at_top,rgba(16,185,129,0.10),transparent_60%)] px-4">
       <form onSubmit={submit} className="card w-full max-w-sm p-7">
         <div className="mb-6 flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-600/15 ring-1 ring-emerald-600/40">
-            <Activity className="text-emerald-400" size={22} />
-          </div>
+          <Logo size={48} />
           <div>
-            <h1 className="text-lg font-semibold">IPF3 Network Monitor</h1>
-            <p className="text-xs text-ink-400">Sign in to continue</p>
+            <h1 className="sr-only">Unknown Monitor</h1>
+            <Brand large />
           </div>
         </div>
+        <p className="mb-5 text-sm text-ink-400">Sign in to your monitoring panel</p>
         <div className="space-y-4">
           <div>
             <label className="label" htmlFor="u">Username</label>

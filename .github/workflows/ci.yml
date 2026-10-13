@@ -80,4 +80,4 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get install -y shellcheck && shellcheck -x -S warning deploy/*.sh
+      - run: sudo apt-get install -y shellcheck && shellcheck -x -S warning install.sh deploy/*.sh

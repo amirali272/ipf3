@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Install the IPF3 control plane (API, worker, PostgreSQL, nginx, web UI) on Ubuntu.
+# Install the Unknown Monitor control plane (API, worker, PostgreSQL, nginx, web UI) on Ubuntu.
+# For a guided installation run ./install.sh instead.
 #
-#   sudo ./deploy/install-server.sh --domain ipf3.example.com --tls letsencrypt --email ops@example.com
+#   sudo ./deploy/install-server.sh --domain monitor.example.com --tls auto
+#   sudo ./deploy/install-server.sh --domain monitor.example.com --tls letsencrypt --email ops@example.com
 #   sudo ./deploy/install-server.sh --domain 10.0.0.5 --tls self-signed
 #   sudo ./deploy/install-server.sh --domain ipf3.corp --tls existing --cert /path/fullchain.pem --key /path/key.pem
 #
@@ -9,7 +11,8 @@
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 DOMAIN=""
-TLS_MODE="self-signed"
+TLS_MODE="auto"
+TIMEZONE=""
 EMAIL=""
 CERT=""
 KEY=""
@@ -24,10 +27,14 @@ usage() {
 
 Options:
   --domain NAME          DNS name or IP clients use to reach the UI (required)
-  --tls MODE             letsencrypt | self-signed | existing   (default: self-signed)
-  --email ADDR           ACME account email (letsencrypt)
+  --tls MODE             auto | letsencrypt | self-signed | existing   (default: auto =
+                         Let's Encrypt for a resolvable domain, falling back to self-signed)
+  --email ADDR           ACME account email (optional)
+  --timezone ZONE        calendar for daily/monthly usage, e.g. Asia/Tehran (default: system)
   --cert PATH --key PATH certificate and key (existing)
-  --admin-user NAME      initial administrator (default: admin)
+  --admin-user NAME      administrator account (default: admin)
+                         Set IPF3_ADMIN_PASSWORD in the environment to choose its password;
+                         otherwise a random one is generated and printed once.
   --workers N            uvicorn worker processes (default: 2)
   --ufw                  allow 80/443 (and OpenSSH) in ufw and enable it
   --skip-web-build       use a prebuilt web/dist instead of building with Node.js
@@ -39,6 +46,7 @@ while [[ $# -gt 0 ]]; do
     --domain) DOMAIN="$2"; shift 2 ;;
     --tls) TLS_MODE="$2"; shift 2 ;;
     --email) EMAIL="$2"; shift 2 ;;
+    --timezone) TIMEZONE="$2"; shift 2 ;;
     --cert) CERT="$2"; shift 2 ;;
     --key) KEY="$2"; shift 2 ;;
     --admin-user) ADMIN_USER="$2"; shift 2 ;;
@@ -56,23 +64,34 @@ require_ubuntu
 [[ "$DOMAIN" =~ ^[A-Za-z0-9.:-]+$ ]] || die "invalid --domain"
 [[ "$ADMIN_USER" =~ ^[A-Za-z0-9_.-]{3,64}$ ]] || die "invalid --admin-user"
 [[ "$WORKERS" =~ ^[0-9]+$ ]] || die "invalid --workers"
+is_ip() { [[ "$1" =~ ^[0-9.]+$ || "$1" == *:* ]]; }
+is_placeholder() { [[ "$1" =~ (^|\.)(example\.(com|net|org)|localhost|local|test|invalid|lan|internal)$ ]]; }
 case "$TLS_MODE" in
+  auto)
+    if is_ip "$DOMAIN" || is_placeholder "$DOMAIN" || ! getent ahosts "$DOMAIN" >/dev/null 2>&1; then
+      TLS_MODE="self-signed"
+    else
+      TLS_MODE="letsencrypt"; TLS_FALLBACK=1
+    fi
+    ;;
   letsencrypt)
-    [[ -n "$EMAIL" ]] || die "--email is required for letsencrypt"
-    if [[ "$DOMAIN" =~ ^[0-9.]+$ || "$DOMAIN" == *:* ]]; then
-      die "Let's Encrypt cannot issue certificates for IP addresses. Use a real domain name, or: --tls self-signed"
-    fi
-    if [[ "$DOMAIN" =~ (^|\.)(example\.(com|net|org)|localhost|local|test|invalid|lan|internal)$ ]]; then
-      die "'$DOMAIN' is a placeholder/reserved name. Use a real domain whose DNS A record points to this server, or: --tls self-signed --domain <server-ip>"
-    fi
-    if ! getent ahosts "$DOMAIN" >/dev/null 2>&1; then
-      die "'$DOMAIN' does not resolve in DNS. Create an A/AAAA record pointing to this server first, or use: --tls self-signed"
-    fi
+    is_ip "$DOMAIN" && die "Let's Encrypt cannot issue certificates for IP addresses. Use a real domain name, or: --tls self-signed"
+    is_placeholder "$DOMAIN" && die "'$DOMAIN' is a placeholder/reserved name. Use a real domain whose DNS A record points to this server, or: --tls self-signed"
+    getent ahosts "$DOMAIN" >/dev/null 2>&1 || die "'$DOMAIN' does not resolve in DNS. Create an A/AAAA record pointing to this server first, or use: --tls self-signed"
     ;;
   existing) [[ -r "$CERT" && -r "$KEY" ]] || die "--cert and --key must be readable files" ;;
   self-signed) ;;
-  *) die "--tls must be letsencrypt, self-signed or existing" ;;
+  *) die "--tls must be auto, letsencrypt, self-signed or existing" ;;
 esac
+TLS_FALLBACK="${TLS_FALLBACK:-0}"
+if [[ -n "${IPF3_ADMIN_PASSWORD:-}" ]]; then
+  pw="$IPF3_ADMIN_PASSWORD"; classes=0
+  [[ "$pw" =~ [a-z] ]] && classes=$((classes + 1))
+  [[ "$pw" =~ [A-Z] ]] && classes=$((classes + 1))
+  [[ "$pw" =~ [0-9] ]] && classes=$((classes + 1))
+  [[ "$pw" =~ [^A-Za-z0-9] ]] && classes=$((classes + 1))
+  { [[ ${#pw} -ge 12 ]] && [[ $classes -ge 3 ]]; } || die "IPF3_ADMIN_PASSWORD must be at least 12 characters with 3 of: lowercase, uppercase, digit, symbol"
+fi
 
 REPO="$(repo_root)"
 PREFIX=/opt/ipf3
@@ -138,6 +157,14 @@ ENV
 fi
 chown root:ipf3 "$ETC/server.env"
 chmod 0640 "$ETC/server.env"
+if [[ -n "$TIMEZONE" ]]; then
+  if [[ -f "/usr/share/zoneinfo/$TIMEZONE" ]]; then
+    sed -i '/^IPF3_USAGE_TIMEZONE=/d' "$ETC/server.env"
+    printf 'IPF3_USAGE_TIMEZONE=%s\n' "$TIMEZONE" >> "$ETC/server.env"
+  else
+    warn "unknown timezone '$TIMEZONE'; keeping the default"
+  fi
+fi
 
 info "Installing application into $PREFIX"
 APP_ARGS=(--skip-restart)
@@ -157,8 +184,12 @@ case "$TLS_MODE" in
   self-signed)
     CERT=/etc/ipf3/tls/server.crt; KEY=/etc/ipf3/tls/server.key
     install -d -m 0750 -o root -g root /etc/ipf3/tls
+    if [[ -f "$CERT" ]] && ! openssl x509 -in "$CERT" -noout -checkhost "$DOMAIN" 2>/dev/null | grep -q "does match" \
+       && ! openssl x509 -in "$CERT" -noout -checkip "$DOMAIN" 2>/dev/null | grep -q "does match"; then
+      rm -f "$CERT" "$KEY"   # domain changed: issue a new certificate
+    fi
     if [[ ! -f "$CERT" ]]; then
-      if [[ "$DOMAIN" =~ ^[0-9.]+$ || "$DOMAIN" == *:* ]]; then SAN="IP:$DOMAIN"; else SAN="DNS:$DOMAIN"; fi
+      if is_ip "$DOMAIN"; then SAN="IP:$DOMAIN"; else SAN="DNS:$DOMAIN"; fi
       openssl req -x509 -newkey rsa:3072 -sha256 -days 825 -nodes -keyout "$KEY" -out "$CERT" \
         -subj "/CN=$DOMAIN" -addext "subjectAltName=$SAN" 2>/dev/null
       chmod 0600 "$KEY"
@@ -188,12 +219,22 @@ if [[ "$TLS_MODE" == "letsencrypt" && ! -f "$CERT" ]]; then
     -out /etc/ipf3/tls/bootstrap.crt -subj "/CN=$DOMAIN" 2>/dev/null
   render_nginx /etc/ipf3/tls/bootstrap.crt /etc/ipf3/tls/bootstrap.key
   nginx -t && systemctl reload-or-restart nginx
-  if ! certbot certonly --webroot -w /var/www/letsencrypt -d "$DOMAIN" --email "$EMAIL" --agree-tos --non-interactive; then
+  if [[ -n "$EMAIL" ]]; then ACME_ID=(--email "$EMAIL"); else ACME_ID=(--register-unsafely-without-email); fi
+  if certbot certonly --webroot -w /var/www/letsencrypt -d "$DOMAIN" "${ACME_ID[@]}" --agree-tos --non-interactive; then
+    install -d /etc/letsencrypt/renewal-hooks/deploy
+    printf '#!/bin/sh\nsystemctl reload nginx\n' > /etc/letsencrypt/renewal-hooks/deploy/ipf3-nginx.sh
+    chmod 0755 /etc/letsencrypt/renewal-hooks/deploy/ipf3-nginx.sh
+  elif [[ $TLS_FALLBACK -eq 1 ]]; then
+    warn "Let's Encrypt failed (is '$DOMAIN' pointing here and port 80 open?). Using a self-signed certificate instead; re-run later to retry."
+    TLS_MODE="self-signed"
+    CERT=/etc/ipf3/tls/server.crt; KEY=/etc/ipf3/tls/server.key
+    if is_ip "$DOMAIN"; then SAN="IP:$DOMAIN"; else SAN="DNS:$DOMAIN"; fi
+    openssl req -x509 -newkey rsa:3072 -sha256 -days 825 -nodes -keyout "$KEY" -out "$CERT" \
+      -subj "/CN=$DOMAIN" -addext "subjectAltName=$SAN" 2>/dev/null
+    chmod 0600 "$KEY"
+  else
     die "certbot failed. Check that '$DOMAIN' points to this server and that TCP port 80 is reachable from the internet, then re-run this script (it is safe to re-run). Alternatively use: --tls self-signed"
   fi
-  install -d /etc/letsencrypt/renewal-hooks/deploy
-  printf '#!/bin/sh\nsystemctl reload nginx\n' > /etc/letsencrypt/renewal-hooks/deploy/ipf3-nginx.sh
-  chmod 0755 /etc/letsencrypt/renewal-hooks/deploy/ipf3-nginx.sh
 fi
 render_nginx "$CERT" "$KEY"
 nginx -t
@@ -217,12 +258,25 @@ done
 curl -fsS http://127.0.0.1:8000/readyz >/dev/null || die "API did not become ready; see: journalctl -u ipf3-api"
 
 ADMIN_EXISTS=$(runuser -u postgres -- psql -d ipf3 -tAc "SELECT count(*) FROM users WHERE role='admin'")
-if [[ "$ADMIN_EXISTS" == "0" ]]; then
-  ADMIN_PASSWORD="$(openssl rand -base64 18 | tr -d '/+=')Aa1!"
-  printf '%s\n' "$ADMIN_PASSWORD" | ipf3_cli create-user "$ADMIN_USER" --role admin >/dev/null
-  printf '\n%s%sInitial administrator%s\n  user:     %s\n  password: %s\n  (shown once — change it after first login under Account)\n' \
-    "$C_BOLD" "$C_GREEN" "$C_RESET" "$ADMIN_USER" "$ADMIN_PASSWORD"
+GENERATED_PASSWORD=""
+if [[ -n "${IPF3_ADMIN_PASSWORD:-}" ]]; then
+  printf '%s\n' "$IPF3_ADMIN_PASSWORD" | ipf3_cli create-user "$ADMIN_USER" --role admin --update >/dev/null
+  info "Administrator '$ADMIN_USER' is ready"
+elif [[ "$ADMIN_EXISTS" == "0" ]]; then
+  GENERATED_PASSWORD="$(openssl rand -base64 18 | tr -d '/+=')Aa1!"
+  printf '%s\n' "$GENERATED_PASSWORD" | ipf3_cli create-user "$ADMIN_USER" --role admin >/dev/null
 fi
 
-printf '\n%sIPF3 is running at https://%s/%s\n' "$C_BOLD" "$DOMAIN" "$C_RESET"
-echo "Next: Servers → Enroll server, then run deploy/install-agent.sh on each Ubuntu host."
+# Machine-readable result for install.sh
+printf 'DOMAIN=%s\nTLS_MODE=%s\nCERT=%s\n' "$DOMAIN" "$TLS_MODE" "$CERT" > /run/ipf3-install.result
+
+if [[ "${IPF3_QUIET_SUMMARY:-0}" != "1" ]]; then
+  printf '\n%sUnknown Monitor is running at https://%s/%s\n' "$C_BOLD" "$DOMAIN" "$C_RESET"
+  if [[ -n "$GENERATED_PASSWORD" ]]; then
+    printf '  user:     %s\n  password: %s\n  (shown once — change it after first login under Account)\n' "$ADMIN_USER" "$GENERATED_PASSWORD"
+  fi
+  if [[ "$TLS_MODE" == "self-signed" ]]; then
+    echo "  Self-signed certificate SHA-256: $(openssl x509 -in "$CERT" -noout -fingerprint -sha256 | cut -d= -f2)"
+  fi
+  echo "Next: Servers → Enroll server, then run ./install.sh on each Ubuntu host."
+fi

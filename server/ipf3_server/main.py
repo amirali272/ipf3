@@ -62,7 +62,7 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
-        title="IPF3 Network Monitor",
+        title="Unknown Monitor",
         version=__version__,
         lifespan=lifespan,
         docs_url="/api/docs",

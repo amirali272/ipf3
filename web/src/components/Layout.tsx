@@ -37,6 +37,19 @@ export function Logo({ size = 40 }: { size?: number }) {
   );
 }
 
+export function Brand({ large = false }: { large?: boolean }) {
+  return (
+    <div className="leading-none">
+      <div className={`${large ? "text-2xl" : "text-[19px]"} font-extrabold tracking-[0.06em] text-ink-100`}>
+        Unknown
+      </div>
+      <div className={`${large ? "mt-1 text-xs" : "mt-0.5 text-[11px]"} font-medium uppercase tracking-[0.42em] text-emerald-400`}>
+        monitor
+      </div>
+    </div>
+  );
+}
+
 function MiniBar({ label, value }: { label: string; value: number | null | undefined }) {
   const v = value ?? 0;
   return (
@@ -232,10 +245,7 @@ export default function Layout() {
       >
         <div className="flex items-center gap-3 border-b border-ink-800 px-5 py-4">
           <Logo />
-          <div>
-            <div className="text-lg font-extrabold tracking-wider text-ink-100">IPF3</div>
-            <div className="-mt-0.5 text-[11px] text-ink-400">Network Monitor</div>
-          </div>
+          <Brand />
         </div>
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
           {NAV.map(link)}
@@ -251,7 +261,7 @@ export default function Layout() {
           <div className="flex items-center gap-2.5 border-t border-ink-800 px-2 pt-3">
             <Logo size={26} />
             <div className="text-xs">
-              <div className="font-semibold text-ink-200">IPF3</div>
+              <div className="font-semibold text-ink-200">Unknown Monitor</div>
               <div className="text-ink-500">v{status?.version ?? "…"}</div>
             </div>
           </div>

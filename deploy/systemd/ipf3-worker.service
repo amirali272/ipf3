@@ -1,5 +1,5 @@
 [Unit]
-Description=IPF3 Network Monitor background worker (schedules, alerts, retention)
+Description=Unknown Monitor background worker (schedules, alerts, retention)
 After=network-online.target postgresql.service ipf3-api.service
 Wants=network-online.target
 Requires=postgresql.service

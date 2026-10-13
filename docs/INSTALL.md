@@ -1,5 +1,10 @@
 # Installation
 
+The easiest way to install is the guided installer: run `sudo ./install.sh` from a
+checkout and pick an option from the menu. It asks for the domain, the administrator
+account and the timezone, then calls the scripts described below. The rest of this
+page covers non-interactive installation and what each step does.
+
 Supported: **Ubuntu 22.04 LTS and 24.04 LTS** on x86_64 or arm64, for both the control
 plane and the agents. Python ≥ 3.10 comes from the Ubuntu archive. PostgreSQL is the
 distribution package: 14 on 22.04, 16 on 24.04.
@@ -28,10 +33,12 @@ sudo ./deploy/install-server.sh --domain ipf3.example.com --tls letsencrypt --em
 | Option | Meaning |
 |---|---|
 | `--domain` | Name or IP that browsers and agents use. Required. |
+| `--tls auto` (default) | Uses Let's Encrypt when the domain resolves, falling back to self-signed if that fails. Uses self-signed for IP addresses. |
 | `--tls letsencrypt --email …` | Obtains a certificate with certbot (webroot) and installs a renewal hook that reloads nginx. |
 | `--tls self-signed` | Generates a 3072-bit RSA certificate with the correct SAN in `/etc/ipf3/tls/`. Agents then need `--ca-file` pointing at a copy of `server.crt`. |
 | `--tls existing --cert --key` | Uses your own certificate, for example from an internal CA. |
-| `--admin-user` | Name of the initial administrator. Default `admin`. |
+| `--admin-user` | Name of the administrator. Default `admin`. Set `IPF3_ADMIN_PASSWORD` in the environment to choose its password; otherwise a random password is printed once. |
+| `--timezone` | Calendar used for daily and monthly traffic totals, for example `Asia/Tehran`. |
 | `--workers N` | Number of uvicorn worker processes. Default 2. |
 | `--ufw` | Allows OpenSSH, 80 and 443 in ufw, then enables ufw. |
 | `--skip-web-build` | Uses a prebuilt `web/dist`, so Node.js isn't needed on the server. |

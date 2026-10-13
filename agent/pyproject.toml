@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ipf3-agent"
-version = "1.1.0"
+version = "1.2.0"
 description = "IPF3 monitoring and network test agent for Ubuntu servers"
 requires-python = ">=3.10"
 dependencies = ["httpx>=0.25", "psutil>=5.9", "dnspython>=2.4"]

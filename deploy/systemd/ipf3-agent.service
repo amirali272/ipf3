@@ -1,5 +1,5 @@
 [Unit]
-Description=IPF3 monitoring and network test agent
+Description=Unknown Monitor agent (telemetry and network tests)
 Documentation=https://github.com/amirali272/ipf3
 After=network-online.target
 Wants=network-online.target

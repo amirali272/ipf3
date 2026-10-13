@@ -69,6 +69,34 @@ async def _create_user(username: str, password: str, role: str, update: bool) ->
         await dispose_engine()
 
 
+async def _create_enrollment_token(note: str, ttl_hours: int) -> str:
+    from datetime import datetime, timedelta, timezone
+
+    from .db import dispose_engine, sessionmaker
+    from .models import AuditLog, EnrollmentToken
+    from .security import hash_token, random_token
+
+    token = "ipf3e_" + random_token(32)
+    try:
+        async with sessionmaker()() as db:
+            row = EnrollmentToken(
+                token_hash=hash_token(token),
+                note=note,
+                expires_at=datetime.now(timezone.utc) + timedelta(hours=ttl_hours),
+            )
+            db.add(row)
+            db.add(AuditLog(action="enrollment_token.create", target=note[:255], details={"via": "cli", "ttl_hours": ttl_hours}))
+            await db.commit()
+    finally:
+        await dispose_engine()
+    return token
+
+
+def cmd_create_enrollment_token(args) -> int:
+    print(asyncio.run(_create_enrollment_token(args.note, args.ttl_hours)))
+    return 0
+
+
 def cmd_create_user(args) -> int:
     password = os.environ.get("IPF3_NEW_USER_PASSWORD") or ""
     if not password:
@@ -126,6 +154,11 @@ def main(argv: list[str] | None = None) -> int:
     u.add_argument("--role", choices=["admin", "operator", "viewer"], default="admin")
     u.add_argument("--update", action="store_true", help="reset password/role if the user exists")
     u.set_defaults(fn=cmd_create_user)
+
+    t = sub.add_parser("create-enrollment-token", help="print a one-time agent enrollment token")
+    t.add_argument("--note", default="cli")
+    t.add_argument("--ttl-hours", type=int, default=24)
+    t.set_defaults(fn=cmd_create_enrollment_token)
 
     s = sub.add_parser("serve", help="run the API server")
     s.add_argument("--host", default="127.0.0.1")
