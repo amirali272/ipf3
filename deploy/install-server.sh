@@ -57,7 +57,18 @@ require_ubuntu
 [[ "$ADMIN_USER" =~ ^[A-Za-z0-9_.-]{3,64}$ ]] || die "invalid --admin-user"
 [[ "$WORKERS" =~ ^[0-9]+$ ]] || die "invalid --workers"
 case "$TLS_MODE" in
-  letsencrypt) [[ -n "$EMAIL" ]] || die "--email is required for letsencrypt" ;;
+  letsencrypt)
+    [[ -n "$EMAIL" ]] || die "--email is required for letsencrypt"
+    if [[ "$DOMAIN" =~ ^[0-9.]+$ || "$DOMAIN" == *:* ]]; then
+      die "Let's Encrypt cannot issue certificates for IP addresses. Use a real domain name, or: --tls self-signed"
+    fi
+    if [[ "$DOMAIN" =~ (^|\.)(example\.(com|net|org)|localhost|local|test|invalid|lan|internal)$ ]]; then
+      die "'$DOMAIN' is a placeholder/reserved name. Use a real domain whose DNS A record points to this server, or: --tls self-signed --domain <server-ip>"
+    fi
+    if ! getent ahosts "$DOMAIN" >/dev/null 2>&1; then
+      die "'$DOMAIN' does not resolve in DNS. Create an A/AAAA record pointing to this server first, or use: --tls self-signed"
+    fi
+    ;;
   existing) [[ -r "$CERT" && -r "$KEY" ]] || die "--cert and --key must be readable files" ;;
   self-signed) ;;
   *) die "--tls must be letsencrypt, self-signed or existing" ;;
@@ -177,7 +188,9 @@ if [[ "$TLS_MODE" == "letsencrypt" && ! -f "$CERT" ]]; then
     -out /etc/ipf3/tls/bootstrap.crt -subj "/CN=$DOMAIN" 2>/dev/null
   render_nginx /etc/ipf3/tls/bootstrap.crt /etc/ipf3/tls/bootstrap.key
   nginx -t && systemctl reload-or-restart nginx
-  certbot certonly --webroot -w /var/www/letsencrypt -d "$DOMAIN" --email "$EMAIL" --agree-tos --non-interactive
+  if ! certbot certonly --webroot -w /var/www/letsencrypt -d "$DOMAIN" --email "$EMAIL" --agree-tos --non-interactive; then
+    die "certbot failed. Check that '$DOMAIN' points to this server and that TCP port 80 is reachable from the internet, then re-run this script (it is safe to re-run). Alternatively use: --tls self-signed"
+  fi
   install -d /etc/letsencrypt/renewal-hooks/deploy
   printf '#!/bin/sh\nsystemctl reload nginx\n' > /etc/letsencrypt/renewal-hooks/deploy/ipf3-nginx.sh
   chmod 0755 /etc/letsencrypt/renewal-hooks/deploy/ipf3-nginx.sh
