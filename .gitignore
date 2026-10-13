@@ -13,3 +13,6 @@ node_modules/
 .env
 *.env.local
 coverage/
+
+# Prebuilt web UI is committed (see scripts/build-web.sh)
+!web/dist/
