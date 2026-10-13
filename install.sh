@@ -330,6 +330,11 @@ install_agent() { # uses PANEL_URL, TOKEN, AGENT_NAME, IPERF, CA_FILE
   [[ -n "${CA_FILE:-}" ]] && args+=(--ca-file "$CA_FILE")
   [[ -f /etc/ipf3/agent.json ]] && args+=(--reenroll)
   run_step "Installing monitoring agent" "$REPO/deploy/install-agent.sh" "${args[@]}"
+  # The name may have been suffixed (-2, -3…) if it was already taken on the panel.
+  local enrolled
+  enrolled=$(python3 -c 'import json;print(json.load(open("/etc/ipf3/agent.json")).get("name",""))' 2>/dev/null || true)
+  [[ -n "$enrolled" ]] && AGENT_NAME="$enrolled"
+  return 0
 }
 
 # ----------------------------------------------------------------------------- node mode

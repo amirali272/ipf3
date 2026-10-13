@@ -72,11 +72,26 @@ else
 fi
 
 if [[ ! -f "$CONF" || $REENROLL -eq 1 ]]; then
-  info "Enrolling '$NAME' with $SERVER"
   FORCE_ARG=()
   [[ $REENROLL -eq 1 ]] && FORCE_ARG=(--force)
-  IPF3_ENROLLMENT_TOKEN="$TOKEN" "$PREFIX/venv/bin/ipf3-agent" --config "$CONF" enroll \
-    --server "$SERVER" --name "$NAME" "${CA_ARG[@]}" "${FORCE_ARG[@]}"
+  # If the name is taken on the panel, try name-2, name-3, … (the token is only
+  # consumed by a successful enrollment).
+  BASE_NAME="$NAME"
+  for n in 1 2 3 4 5 6 7 8 9; do
+    [[ $n -gt 1 ]] && NAME="${BASE_NAME}-$n"
+    info "Enrolling '$NAME' with $SERVER"
+    if OUT=$(IPF3_ENROLLMENT_TOKEN="$TOKEN" "$PREFIX/venv/bin/ipf3-agent" --config "$CONF" enroll \
+      --server "$SERVER" --name "$NAME" "${CA_ARG[@]}" "${FORCE_ARG[@]}" 2>&1); then
+      [[ -n "$OUT" ]] && echo "$OUT"
+      break
+    fi
+    echo "$OUT"
+    if [[ "$OUT" == *"409"*"already exists"* && $n -lt 9 ]]; then
+      warn "The name '$NAME' is already used on the panel; trying another"
+      continue
+    fi
+    die "enrollment failed"
+  done
 else
   info "Existing enrollment found in $CONF; keeping it"
 fi
