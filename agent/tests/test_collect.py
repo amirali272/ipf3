@@ -46,3 +46,27 @@ def test_collector_real_sample():
     assert s["system"]["mem_total"] > 0
     for i in s["interfaces"]:
         assert i["rx_bps"] >= 0 and i["iface"] != "lo"
+
+
+def test_primary_interfaces(tmp_path):
+    from ipf3_agent.collect import primary_interfaces
+
+    for n in ("eth0", "ens3"):
+        (tmp_path / n / "device").mkdir(parents=True)
+    (tmp_path / "docker0").mkdir()
+    assert primary_interfaces(["lo", "eth0", "ens3", "docker0", "wg0"], str(tmp_path)) == {"eth0", "ens3"}
+    # no device-backed NIC (e.g. OpenVZ venet0): everything but loopback
+    assert primary_interfaces(["lo", "venet0"], str(tmp_path)) == {"venet0"}
+
+
+def test_live_meter_and_bytes():
+    from ipf3_agent.collect import NetRateMeter
+
+    m = NetRateMeter()
+    assert m.sample() is None
+    rates = m.sample()
+    assert rates is not None and all(r["rx_bps"] >= 0 and "primary" in r for r in rates)
+    c = MetricsCollector([])
+    c.sample()
+    s = c.sample()
+    assert all(i["rx_bytes"] >= 0 and i["tx_bytes"] >= 0 for i in s["interfaces"])

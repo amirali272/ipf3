@@ -10,8 +10,9 @@ import { axisTime, fmtBps, fmtBpsShort, fmtBytes, fmtDuration, fmtMs, fmtNum, fm
 import { useAuth } from "../lib/auth";
 import { useLive } from "../lib/live";
 import { CopyBox } from "./Servers";
+import { UsageView } from "./Usage";
 
-type Tab = "overview" | "interfaces" | "routes" | "connections" | "dns" | "tests" | "settings";
+type Tab = "overview" | "usage" | "interfaces" | "routes" | "connections" | "dns" | "tests" | "settings";
 
 function rangeParams(seconds: number) {
   const to = new Date();
@@ -87,11 +88,8 @@ function Interfaces({ agent, inv, range }: { agent: Agent; inv?: Inventory; rang
       </Card>
       {selected && (
         <div className="grid gap-6 xl:grid-cols-2">
-          <Card title={<>Live throughput · <span className="mono text-emerald-300">{selected}</span></>} actions={<span className="text-xs text-ink-400">{live.connected ? "streaming" : "connecting…"}</span>}>
-            <TimeChart data={livePts} xKey="t" area series={[{ key: "rx_bps", label: "Receive" }, { key: "tx_bps", label: "Transmit" }]} yFormat={fmtBpsShort} xFormat={clock} empty="Waiting for the next sample…" />
-          </Card>
-          <Card title={<>Packets per second · <span className="mono text-emerald-300">{selected}</span></>}>
-            <TimeChart data={livePts} xKey="t" series={[{ key: "rx_pps", label: "RX pps" }, { key: "tx_pps", label: "TX pps" }]} yFormat={(v) => fmtBpsShort(v)} xFormat={clock} empty="Waiting for the next sample…" />
+          <Card className="xl:col-span-2" title={<>Live throughput · <span className="mono text-emerald-300">{selected}</span></>} actions={<span className="text-xs text-ink-400">{live.connected ? "updates every 2 s" : "connecting…"}</span>}>
+            <TimeChart data={livePts} xKey="t" area series={[{ key: "rx_bps", label: "Receive" }, { key: "tx_bps", label: "Transmit" }]} yFormat={fmtBpsShort} xFormat={clock} height={260} empty="Waiting for the next sample…" />
           </Card>
           <Card title={<>History · <span className="mono text-emerald-300">{selected}</span></>} className="xl:col-span-2">
             <TimeChart data={data?.points ?? []} xKey="t" area series={[{ key: "rx_bps", label: "Receive (avg)" }, { key: "tx_bps", label: "Transmit (avg)" }]} yFormat={fmtBpsShort} xFormat={axisTime(range)} tooltipX={fmtTime} height={240} />
@@ -272,6 +270,7 @@ export default function ServerDetail() {
   if (!agent) return <Spinner />;
   const tabs: { id: Tab; label: string }[] = [
     { id: "overview", label: "Overview" },
+    { id: "usage", label: "Traffic usage" },
     { id: "interfaces", label: "Interfaces" },
     { id: "routes", label: "Routes" },
     { id: "connections", label: "Connections" },
@@ -304,6 +303,7 @@ export default function ServerDetail() {
       <Tabs tabs={tabs} value={tab} onChange={setTab} />
       <div className="mt-6">
         {tab === "overview" && <Overview agent={agent} range={range} />}
+        {tab === "usage" && <UsageView agentId={agent.id} interfaces={inv?.interfaces.map((i) => i.name).filter((n) => n !== "lo")} />}
         {tab === "interfaces" && <Interfaces agent={agent} inv={inv} range={range} />}
         {tab === "routes" && <Routes inv={inv} />}
         {tab === "connections" && <Connections inv={inv} />}

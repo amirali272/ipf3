@@ -14,6 +14,7 @@ import ServerDetail from "./pages/ServerDetail";
 import Servers from "./pages/Servers";
 import Tests from "./pages/Tests";
 import UsersPage from "./pages/Users";
+import Usage from "./pages/Usage";
 
 export default function App() {
   const { user, loading, can } = useAuth();
@@ -25,6 +26,7 @@ export default function App() {
         <Route index element={<Dashboard />} />
         <Route path="servers" element={<Servers />} />
         <Route path="servers/:id" element={<ServerDetail />} />
+        <Route path="usage" element={<Usage />} />
         <Route path="tests" element={<Tests />} />
         <Route path="jobs/:id" element={<JobDetail />} />
         <Route path="schedules" element={<Schedules />} />

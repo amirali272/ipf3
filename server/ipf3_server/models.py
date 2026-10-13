@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import enum
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Date,
     DateTime,
     Enum,
     Float,
@@ -146,6 +147,9 @@ class MetricSample(Base):
     tcp_retrans_segs: Mapped[int | None] = mapped_column(BigInteger)
     rx_bps: Mapped[float | None] = mapped_column(Float)
     tx_bps: Mapped[float | None] = mapped_column(Float)
+    # Bytes transferred on primary interfaces during the sample interval.
+    rx_bytes: Mapped[int | None] = mapped_column(BigInteger)
+    tx_bytes: Mapped[int | None] = mapped_column(BigInteger)
 
 
 class InterfaceSample(Base):
@@ -164,6 +168,41 @@ class InterfaceSample(Base):
     tx_errs: Mapped[int] = mapped_column(BigInteger, default=0)
     rx_drops: Mapped[int] = mapped_column(BigInteger, default=0)
     tx_drops: Mapped[int] = mapped_column(BigInteger, default=0)
+    rx_bytes: Mapped[int | None] = mapped_column(BigInteger)
+    tx_bytes: Mapped[int | None] = mapped_column(BigInteger)
+    primary: Mapped[bool | None] = mapped_column(Boolean)
+
+
+class TrafficDaily(Base):
+    """Bytes consumed per agent, interface and calendar day (in the configured
+    usage timezone). iface '*' holds the host total over primary interfaces.
+    Kept much longer than raw samples so monthly usage survives retention."""
+
+    __tablename__ = "traffic_daily"
+
+    agent_id: Mapped[str] = mapped_column(
+        ForeignKey("agents.id", ondelete="CASCADE"), primary_key=True
+    )
+    iface: Mapped[str] = mapped_column(String(64), primary_key=True)
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    rx_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    tx_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+
+
+class LiveRate(Base):
+    """Most recent fast (≈2 s) rate sample per agent for the live view.
+    One row per agent, overwritten on every report; UNLOGGED in PostgreSQL."""
+
+    __tablename__ = "live_rates"
+    __table_args__ = {"prefixes": ["UNLOGGED"]}
+
+    agent_id: Mapped[str] = mapped_column(
+        ForeignKey("agents.id", ondelete="CASCADE"), primary_key=True
+    )
+    ts: Mapped[datetime] = mapped_column(TS)
+    rx_bps: Mapped[float] = mapped_column(Float, default=0)
+    tx_bps: Mapped[float] = mapped_column(Float, default=0)
+    interfaces: Mapped[list] = mapped_column(JSONB, default=list)
 
 
 class AgentInventory(Base):

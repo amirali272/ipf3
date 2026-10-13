@@ -107,6 +107,46 @@ class _Counters:
     nics: dict
 
 
+def is_physical(iface: str, sys_root: str = "/sys/class/net") -> bool:
+    """True for NICs backed by a device (incl. virtio on VPSes). Bridges, veth,
+    tun/wg, ifb and docker interfaces are virtual and would double count traffic."""
+    return os.path.exists(f"{sys_root}/{iface}/device")
+
+
+def primary_interfaces(names: list[str], sys_root: str = "/sys/class/net") -> set[str]:
+    """Interfaces whose traffic makes up the host total. Falls back to every
+    non-loopback interface on hosts without device-backed NICs (e.g. OpenVZ venet0)."""
+    phys = {n for n in names if n != "lo" and is_physical(n, sys_root)}
+    return phys or {n for n in names if n != "lo"}
+
+
+class NetRateMeter:
+    """Lightweight per-interface bit-rate meter for the live view (no CPU/memory
+    work, so it can run every couple of seconds)."""
+
+    def __init__(self, exclude_interfaces: list[str] | None = None):
+        self.exclude = set(exclude_interfaces or [])
+        self._prev: _Counters | None = None
+
+    def sample(self) -> list[dict] | None:
+        now = time.monotonic()
+        nics = {k: v for k, v in psutil.net_io_counters(pernic=True).items() if k not in self.exclude}
+        prev, self._prev = self._prev, _Counters(now, nics)
+        if prev is None or now <= prev.t:
+            return None
+        dt = now - prev.t
+        primary = primary_interfaces(list(nics))
+        out = []
+        for name, c in nics.items():
+            p = prev.nics.get(name)
+            if p is None:
+                continue
+            rx = c.bytes_recv - p.bytes_recv if c.bytes_recv >= p.bytes_recv else 0
+            tx = c.bytes_sent - p.bytes_sent if c.bytes_sent >= p.bytes_sent else 0
+            out.append({"iface": name[:64], "rx_bps": rx * 8 / dt, "tx_bps": tx * 8 / dt, "primary": name in primary})
+        return out
+
+
 class MetricsCollector:
     """Computes per-interval rates from monotonically increasing kernel counters."""
 
@@ -128,6 +168,7 @@ class MetricsCollector:
         if dt <= 0:
             return None
         interfaces = []
+        primary = primary_interfaces(list(nics))
         for name, c in nics.items():
             p = prev.nics.get(name)
             if p is None:
@@ -148,6 +189,9 @@ class MetricsCollector:
                     "tx_errs": d(c.errout, p.errout),
                     "rx_drops": d(c.dropin, p.dropin),
                     "tx_drops": d(c.dropout, p.dropout),
+                    "rx_bytes": d(c.bytes_recv, p.bytes_recv),
+                    "tx_bytes": d(c.bytes_sent, p.bytes_sent),
+                    "primary": name in primary,
                 }
             )
         vm = psutil.virtual_memory()

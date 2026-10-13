@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     retention_jobs_days: int = 180
     retention_alerts_days: int = 365
     retention_audit_days: int = 365
+    retention_usage_days: int = 1095
+
+    # Calendar used for daily/monthly traffic totals (IANA name, e.g. Asia/Tehran).
+    usage_timezone: str = "UTC"
 
     # Login protection
     login_max_failures: int = 5

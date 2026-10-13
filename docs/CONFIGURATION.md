@@ -24,6 +24,8 @@ restart the services: `systemctl restart ipf3-api ipf3-worker`.
 | `IPF3_RETENTION_JOBS_DAYS` | `180` | Test results, including raw output. |
 | `IPF3_RETENTION_ALERTS_DAYS` | `365` | Resolved alert events. |
 | `IPF3_RETENTION_AUDIT_DAYS` | `365` | Audit log. |
+| `IPF3_RETENTION_USAGE_DAYS` | `1095` | Daily traffic totals. These are small, so the default is 3 years. |
+| `IPF3_USAGE_TIMEZONE` | `UTC` | IANA timezone (for example `Asia/Tehran`) that sets where "today" and "this month" begin. The installer sets it from the server's timezone. |
 | `IPF3_LOGIN_MAX_FAILURES` | `5` | Failed logins allowed before the account is locked. |
 | `IPF3_LOGIN_LOCKOUT_MINUTES` | `15` | Lockout duration. |
 | `IPF3_SCHEDULER_INTERVAL` | `5` | How often (in seconds) the worker checks schedules and job expiry. |
@@ -66,6 +68,7 @@ restart the agent: `systemctl restart ipf3-agent`.
 |---|---|
 | `server_url` | Must be `https://`. Plain HTTP is refused unless `IPF3_AGENT_ALLOW_HTTP=1` is set, which is meant for development only. |
 | `ca_file` | PEM bundle used to verify a private or self-signed server certificate. Without it, the system trust store is used. |
+| `live_interval` | Seconds between the lightweight current-rate reports used by the live dashboard. Default 2. These reports aren't stored as history. |
 | `metrics_interval` | Seconds between samples. Rates are computed from kernel counter deltas over this interval. |
 | `inventory_interval` | Seconds between refreshes of interfaces, routes, sockets and DNS configuration. |
 | `max_concurrent_jobs` | Number of diagnostic jobs that can run in parallel. iperf3 jobs always run one at a time, so they don't skew each other's results. |

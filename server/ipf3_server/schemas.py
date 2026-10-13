@@ -260,6 +260,20 @@ class InterfaceRate(BaseModel):
     tx_errs: int = Field(0, ge=0)
     rx_drops: int = Field(0, ge=0)
     tx_drops: int = Field(0, ge=0)
+    rx_bytes: int | None = Field(None, ge=0)
+    tx_bytes: int | None = Field(None, ge=0)
+    primary: bool | None = None
+
+
+class LiveIfaceRate(BaseModel):
+    iface: str = Field(max_length=64)
+    rx_bps: float = Field(ge=0)
+    tx_bps: float = Field(ge=0)
+    primary: bool = True
+
+
+class LiveIn(BaseModel):
+    interfaces: list[LiveIfaceRate] = Field(default_factory=list, max_length=256)
 
 
 class MetricsIn(BaseModel):

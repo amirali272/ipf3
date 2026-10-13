@@ -46,6 +46,10 @@ Role in brackets: V = viewer, O = operator, A = admin.
 | `GET /analytics/tests?type&agent_id&target&from&to&bucket` | V | Test series and summary (avg, p95 RTT, loss, jitter) |
 | `GET /analytics/targets?days` | V | Distinct (agent, type, target) combinations |
 | `GET /analytics/fleet?from&to` | V | Per-server utilisation over a period |
+| `GET /analytics/usage?days&agent_id&iface` | V | Bytes consumed today, this month, and per day (`iface=*` = host total over physical NICs) |
+| `GET /analytics/live` | V | Latest ≈2 s current-rate report per agent |
+| `GET /analytics/fleet-bandwidth?from&to&bucket` | V | Fleet rx/tx series (per-agent average, then summed across agents) |
+| `GET /system/status` | V | Control-plane health (API, database, worker) and host CPU, memory and disk |
 | `GET /audit?action&username&before_id&limit` | A | Audit log (keyset pagination) |
 | `WS /ws/live` | V (cookie) | Live frames every 2 s. Send `{"focus": "<agent_id>"}` to also receive that agent's interface samples. |
 
@@ -80,7 +84,8 @@ Every request except enrollment carries `Authorization: Bearer <agent_id>.<secre
 |---|---|---|
 | `POST /enroll` | `{enrollment_token, name, system}` | Returns `{agent_id, agent_token}` (201). The token is consumed. |
 | `POST /heartbeat` | `{system: {hostname, os_name, kernel, agent_version, cpu_count, capabilities}}` | Every 60 s; updates detected tools |
-| `POST /metrics` | `{ts, system: {...}, interfaces: [{iface, rx_bps, tx_bps, rx_pps, tx_pps, rx_errs, tx_errs, rx_drops, tx_drops}]}` | Every 10 s. Rates come from counter deltas. Timestamps skewed by more than 10 min are replaced with the receipt time. |
+| `POST /metrics` | `{ts, system: {...}, interfaces: [{iface, rx_bps, tx_bps, rx_pps, tx_pps, rx_errs, tx_errs, rx_drops, tx_drops, rx_bytes, tx_bytes, primary}]}` | Every 10 s. Rates come from counter deltas. Timestamps skewed by more than 10 min are replaced with the receipt time. |
+| `POST /live` | `{interfaces: [{iface, rx_bps, tx_bps, primary}]}` | Every ≈2 s. Overwrites a single row per agent; not stored as history. |
 | `POST /inventory` | `{interfaces, routes, routes6, connections, dns, system}` | Every 60 s (upsert) |
 | `GET /jobs?wait=0..25&limit=1..16` | — | Long poll. Atomically claims queued jobs (`FOR UPDATE SKIP LOCKED`). |
 | `POST /jobs/{id}/result` | `{status: completed\|failed, raw?, result?, error?, started_at, finished_at}` | The server parses `raw` (iperf3 JSON, ping, traceroute, mtr JSON). `result` is used for DNS only. Results for cancelled or expired jobs are ignored. |

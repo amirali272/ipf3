@@ -18,6 +18,7 @@ or synthesises samples. A gap in reporting stays a gap on the chart.
 | Area | What you get |
 |---|---|
 | **Multi-server monitoring** | CPU, memory, swap, disk, load, uptime, TCP states, retransmits, and per-interface bit/s, packets/s, errors and drops. Collected every 10 s from kernel counters. |
+| **Real-time consumption** | Each agent reports the current rate of every interface every 2 s, measured from the kernel byte counters of the traffic actually flowing. No test traffic is generated. Bytes are also accumulated into per-day and per-month totals (download and upload) for each server and the whole fleet, kept for 3 years. Only device-backed NICs count toward host totals, so bridges, veth, tun/wg and docker interfaces don't double-count. |
 | **Real-time graphs** | A WebSocket live feed for fleet and per-interface bandwidth, plus historical charts (15 min → 30 days) with server-side time bucketing (`date_bin`). |
 | **Speed tests** | iperf3 TCP/UDP in upload, download (`-R`) and bidirectional modes, with parallel streams, bitrate, omit and IPv6 options. Shows per-interval throughput, retransmits, jitter, loss and CPU. |
 | **Diagnostics** | Ping (RTT, loss, jitter), traceroute (UDP/ICMP/TCP), MTR, and DNS (any record type, chosen resolver, UDP/TCP, timing). |

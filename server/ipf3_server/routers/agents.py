@@ -23,6 +23,8 @@ LATEST_FIELDS = (
     "mem_percent",
     "disk_percent",
     "load1",
+    "load5",
+    "load15",
     "rx_bps",
     "tx_bps",
     "tcp_established",

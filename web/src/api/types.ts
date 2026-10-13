@@ -20,6 +20,8 @@ export interface LatestMetrics {
   mem_percent: number | null;
   disk_percent: number | null;
   load1: number | null;
+  load5: number | null;
+  load15: number | null;
   rx_bps: number | null;
   tx_bps: number | null;
   tcp_established: number | null;
@@ -240,4 +242,44 @@ export interface AuditEntry {
   target: string;
   details: Record<string, unknown>;
   ip: string | null;
+}
+
+export interface UsageAgent {
+  agent_id: string;
+  name: string;
+  today_rx: number;
+  today_tx: number;
+  month_rx: number;
+  month_tx: number;
+  period_rx: number;
+  period_tx: number;
+}
+
+export interface Usage {
+  timezone: string;
+  today: string;
+  month_start: string;
+  days: number;
+  fleet: Omit<UsageAgent, "agent_id" | "name">;
+  agents: UsageAgent[];
+  daily: { day: string; rx_bytes: number; tx_bytes: number }[];
+}
+
+export interface SystemStatus {
+  version: string;
+  api: boolean;
+  database: boolean;
+  worker: boolean;
+  cpu_percent: number | null;
+  mem_percent: number | null;
+  disk_percent: number | null;
+  usage_timezone: string;
+}
+
+export interface FleetPoint {
+  t: string;
+  rx_bps: number | null;
+  tx_bps: number | null;
+  rx_bytes: number | null;
+  tx_bytes: number | null;
 }

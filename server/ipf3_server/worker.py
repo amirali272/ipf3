@@ -25,6 +25,7 @@ from .models import (
     JobStatus,
     MetricSample,
     Schedule,
+    TrafficDaily,
 )
 from .schemas import job_target
 from .services import alerting
@@ -131,6 +132,10 @@ async def purge_old_data(now: datetime | None = None) -> dict[str, int]:
             )
         )
         out["alert_events"] = r.rowcount or 0
+        r = await db.execute(
+            delete(TrafficDaily).where(TrafficDaily.day < (now - timedelta(days=s.retention_usage_days)).date())
+        )
+        out["traffic_daily"] = r.rowcount or 0
         r = await db.execute(
             delete(EnrollmentToken).where(EnrollmentToken.expires_at < now - timedelta(days=30))
         )

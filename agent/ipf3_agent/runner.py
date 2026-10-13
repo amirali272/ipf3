@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 import httpx
 
 from . import __version__
-from .collect import MetricsCollector, host_inventory, system_info
+from .collect import MetricsCollector, NetRateMeter, host_inventory, system_info
 from .config import AgentConfig
 from .tools import JobError, execute
 
@@ -53,6 +53,7 @@ class Agent:
         self.cfg = cfg
         self.client = make_client(cfg.server_url, cfg.ca_file, cfg.agent_token)
         self.collector = MetricsCollector(cfg.exclude_interfaces)
+        self.live_meter = NetRateMeter(cfg.exclude_interfaces)
         self.stop = asyncio.Event()
         self.job_slots = asyncio.Semaphore(max(1, cfg.max_concurrent_jobs))
         # Bandwidth tests run one at a time so they do not distort each other.
@@ -95,6 +96,12 @@ class Agent:
             return
         sample["ts"] = datetime.now(timezone.utc).isoformat()
         await self._request("POST", "/metrics", json=sample)
+
+    async def send_live(self) -> None:
+        rates = await asyncio.to_thread(self.live_meter.sample)
+        if rates is None:
+            return
+        await self._request("POST", "/live", json={"interfaces": rates})
 
     async def send_inventory(self) -> None:
         inv = await asyncio.to_thread(host_inventory, self.cfg.max_connections_reported)
@@ -155,9 +162,11 @@ class Agent:
         for sig in (signal.SIGTERM, signal.SIGINT):
             loop.add_signal_handler(sig, self.stop.set)
         log.info("ipf3-agent %s starting; server %s", __version__, self.cfg.server_url)
-        await self.send_heartbeat()
+        # The heartbeat loop sends the first heartbeat immediately and retries with
+        # backoff, so a server that is not reachable yet (e.g. at boot) is tolerated.
         runners = [
             asyncio.create_task(self._periodic("metrics", self.cfg.metrics_interval, self.send_metrics)),
+            asyncio.create_task(self._periodic("live", self.cfg.live_interval, self.send_live)),
             asyncio.create_task(self._periodic("inventory", self.cfg.inventory_interval, self.send_inventory)),
             asyncio.create_task(self._periodic("heartbeat", self.cfg.heartbeat_interval, self.send_heartbeat)),
             asyncio.create_task(self.poll_jobs()),

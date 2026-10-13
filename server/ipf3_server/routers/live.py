@@ -14,7 +14,7 @@ from sqlalchemy import select
 
 from ..config import get_settings
 from ..db import sessionmaker
-from ..models import Agent, AlertEvent, AlertState, InterfaceSample, MetricSample, User
+from ..models import Agent, AlertEvent, AlertState, InterfaceSample, LiveRate, MetricSample, User
 from ..security import SESSION_COOKIE, decode_session_token
 from .agents import is_online
 
@@ -104,6 +104,11 @@ async def live(ws: WebSocket):
                     if ifaces:
                         last_iface_id = ifaces[-1].id
                 agents = (await db.execute(select(Agent))).scalars().all()
+                live_rows = (
+                    await db.execute(
+                        select(LiveRate).where(LiveRate.ts >= datetime.now(timezone.utc) - timedelta(seconds=15))
+                    )
+                ).scalars().all()
                 firing = (
                     await db.execute(select(AlertEvent.id).where(AlertEvent.state == AlertState.firing))
                 ).scalars().all()
@@ -115,6 +120,17 @@ async def live(ws: WebSocket):
                     for a in agents
                 ],
                 "alerts_firing": len(firing),
+                # Current consumption, reported by agents every ≈2 s.
+                "live": [
+                    {
+                        "agent_id": r.agent_id,
+                        "ts": r.ts,
+                        "rx_bps": r.rx_bps,
+                        "tx_bps": r.tx_bps,
+                        "interfaces": r.interfaces if r.agent_id == current_focus else None,
+                    }
+                    for r in live_rows
+                ],
                 "metrics": [
                     {
                         "agent_id": m.agent_id,

@@ -20,7 +20,9 @@ from ..models import (
     InterfaceSample,
     Job,
     JobStatus,
+    LiveRate,
     MetricSample,
+    TrafficDaily,
 )
 from ..schemas import (
     AgentJobOut,
@@ -29,11 +31,13 @@ from ..schemas import (
     HeartbeatIn,
     InventoryIn,
     JobResultIn,
+    LiveIn,
     MetricsIn,
 )
 from ..security import hash_token, random_token
 from ..services.parsers import ParseError, parse_job
 from ..services.ratelimit import enroll_limiter
+from ..services.usage import usage_day
 
 router = APIRouter(prefix="/agent/v1", tags=["agent"])
 
@@ -98,19 +102,71 @@ async def metrics(
         # Do not trust a badly skewed agent clock; record at receipt time.
         ts = now
     sys = body.system
-    total_rx = sum(i.rx_bps for i in body.interfaces)
-    total_tx = sum(i.tx_bps for i in body.interfaces)
+    host = _host_interfaces(body.interfaces)
+    total_rx = sum(i.rx_bps for i in host)
+    total_tx = sum(i.tx_bps for i in host)
+    have_bytes = all(i.rx_bytes is not None and i.tx_bytes is not None for i in host) and bool(host)
+    rx_bytes = sum(i.rx_bytes or 0 for i in host) if have_bytes else None
+    tx_bytes = sum(i.tx_bytes or 0 for i in host) if have_bytes else None
     db.add(
         MetricSample(
             agent_id=agent.id,
             ts=ts,
             rx_bps=total_rx,
             tx_bps=total_tx,
+            rx_bytes=rx_bytes,
+            tx_bytes=tx_bytes,
             **sys.model_dump(),
         )
     )
     for i in body.interfaces:
         db.add(InterfaceSample(agent_id=agent.id, ts=ts, **i.model_dump()))
+
+    # Accumulate consumption per calendar day (upsert with addition).
+    day = usage_day(ts)
+    usage_rows = [
+        {"agent_id": agent.id, "iface": i.iface, "day": day, "rx_bytes": i.rx_bytes, "tx_bytes": i.tx_bytes}
+        for i in body.interfaces
+        if i.rx_bytes is not None and i.tx_bytes is not None
+    ]
+    if have_bytes:
+        usage_rows.append({"agent_id": agent.id, "iface": "*", "day": day, "rx_bytes": rx_bytes, "tx_bytes": tx_bytes})
+    if usage_rows:
+        stmt = pg_insert(TrafficDaily).values(usage_rows)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[TrafficDaily.agent_id, TrafficDaily.iface, TrafficDaily.day],
+            set_={
+                "rx_bytes": TrafficDaily.rx_bytes + stmt.excluded.rx_bytes,
+                "tx_bytes": TrafficDaily.tx_bytes + stmt.excluded.tx_bytes,
+            },
+        )
+        await db.execute(stmt)
+    await db.commit()
+
+
+def _host_interfaces(ifaces: list) -> list:
+    """Interfaces counted in the host total: those the agent marks primary
+    (device-backed NICs). Older agents send no flag: count everything."""
+    flagged = [i for i in ifaces if i.primary is not None]
+    if not flagged:
+        return list(ifaces)
+    primary = [i for i in ifaces if i.primary]
+    return primary or list(ifaces)
+
+
+@router.post("/live", status_code=204)
+async def live(body: LiveIn, agent: Agent = Depends(current_agent), db: AsyncSession = Depends(get_session)):
+    """Fast (≈2 s) current-rate report for the live view. Not stored as history."""
+    host = [i for i in body.interfaces if i.primary] or body.interfaces
+    values = {
+        "ts": datetime.now(timezone.utc),
+        "rx_bps": sum(i.rx_bps for i in host),
+        "tx_bps": sum(i.tx_bps for i in host),
+        "interfaces": [i.model_dump() for i in body.interfaces],
+    }
+    stmt = pg_insert(LiveRate).values(agent_id=agent.id, **values)
+    stmt = stmt.on_conflict_do_update(index_elements=[LiveRate.agent_id], set_=values)
+    await db.execute(stmt)
     await db.commit()
 
 

@@ -3,12 +3,25 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_session
 from ..deps import require_admin, require_viewer
-from ..models import Agent, AlertEvent, AlertState, AuditLog, Job, JobStatus, JobType, MetricSample, User
+from ..models import (
+    Agent,
+    AlertEvent,
+    AlertState,
+    AuditLog,
+    Job,
+    JobStatus,
+    JobType,
+    LiveRate,
+    MetricSample,
+    TrafficDaily,
+    User,
+)
+from ..services import usage
 from ..schemas import AuditOut
 from ..services.timeseries import bucket_expr, pick_bucket, resolve_range
 from .agents import is_online, latest_metrics
@@ -205,3 +218,184 @@ async def audit_log(
     if before_id:
         q = q.where(AuditLog.id < before_id)
     return (await db.execute(q)).scalars().all()
+
+
+# --------------------------------------------------------------------------- traffic usage
+@router.get("/analytics/usage")
+async def traffic_usage(
+    days: int = Query(30, ge=1, le=1095),
+    agent_id: str | None = None,
+    iface: str = Query("*", max_length=64),
+    _: User = Depends(require_viewer),
+    db: AsyncSession = Depends(get_session),
+):
+    """Bytes actually transferred (from kernel counters) per day and month.
+    iface '*' = host total over primary (device-backed) interfaces."""
+    t = usage.today()
+    m = usage.month_start(t)
+    since = min(usage.days_back(t, days - 1), m)
+
+    rows = (
+        await db.execute(
+            select(TrafficDaily.agent_id, TrafficDaily.day, TrafficDaily.rx_bytes, TrafficDaily.tx_bytes)
+            .where(TrafficDaily.iface == iface, TrafficDaily.day >= since)
+            .where(TrafficDaily.agent_id == agent_id if agent_id else True)
+        )
+    ).all()
+    names = dict((await db.execute(select(Agent.id, Agent.name))).all())
+
+    per_agent: dict[str, dict] = {}
+    daily: dict = {}
+    for aid, day, rx, tx in rows:
+        a = per_agent.setdefault(aid, {"agent_id": aid, "name": names.get(aid, aid), "today_rx": 0, "today_tx": 0, "month_rx": 0, "month_tx": 0, "period_rx": 0, "period_tx": 0})
+        if day == t:
+            a["today_rx"] += rx
+            a["today_tx"] += tx
+        if day >= m:
+            a["month_rx"] += rx
+            a["month_tx"] += tx
+        if day >= usage.days_back(t, days - 1):
+            a["period_rx"] += rx
+            a["period_tx"] += tx
+            d = daily.setdefault(day, {"day": day, "rx_bytes": 0, "tx_bytes": 0})
+            d["rx_bytes"] += rx
+            d["tx_bytes"] += tx
+    # One entry per day from the first recorded day in the period up to today.
+    # Days before anything was recorded are omitted rather than shown as 0 bytes;
+    # later days without reports (agent down) are 0 because nothing was measured.
+    series = []
+    if daily:
+        first = min(daily)
+        n_days = (t - first).days
+        for n in range(n_days, -1, -1):
+            d = usage.days_back(t, n)
+            series.append(daily.get(d, {"day": d, "rx_bytes": 0, "tx_bytes": 0}))
+    agents = sorted(per_agent.values(), key=lambda a: -(a["today_rx"] + a["today_tx"]))
+    fleet = {k: sum(a[k] for a in agents) for k in ("today_rx", "today_tx", "month_rx", "month_tx", "period_rx", "period_tx")}
+    return {
+        "timezone": str(usage.usage_tz()),
+        "today": t,
+        "month_start": m,
+        "days": days,
+        "fleet": fleet,
+        "agents": agents,
+        "daily": series,
+    }
+
+
+@router.get("/analytics/fleet-bandwidth")
+async def fleet_bandwidth(
+    start: datetime | None = Query(None, alias="from"),
+    end: datetime | None = Query(None, alias="to"),
+    bucket: int | None = Query(None, ge=10, le=86400),
+    _: User = Depends(require_viewer),
+    db: AsyncSession = Depends(get_session),
+):
+    """Fleet-wide rx/tx: per bucket, average each agent's samples, then sum agents."""
+    start, end = resolve_range(start, end, default=timedelta(hours=1))
+    b = pick_bucket(start, end, bucket)
+    t = bucket_expr(MetricSample.ts, b).label("t")
+    per_agent = (
+        select(
+            t,
+            MetricSample.agent_id,
+            func.avg(MetricSample.rx_bps).label("rx"),
+            func.avg(MetricSample.tx_bps).label("tx"),
+            func.sum(MetricSample.rx_bytes).label("rxb"),
+            func.sum(MetricSample.tx_bytes).label("txb"),
+        )
+        .where(MetricSample.ts >= start, MetricSample.ts < end)
+        .group_by(t, MetricSample.agent_id)
+        .subquery()
+    )
+    q = (
+        select(
+            per_agent.c.t,
+            func.sum(per_agent.c.rx).label("rx_bps"),
+            func.sum(per_agent.c.tx).label("tx_bps"),
+            func.sum(per_agent.c.rxb).label("rx_bytes"),
+            func.sum(per_agent.c.txb).label("tx_bytes"),
+        )
+        .group_by(per_agent.c.t)
+        .order_by(per_agent.c.t)
+    )
+    rows = (await db.execute(q)).mappings().all()
+    return {"bucket": b, "from": start, "to": end, "points": [dict(r) for r in rows]}
+
+
+@router.get("/analytics/live")
+async def live_rates(_: User = Depends(require_viewer), db: AsyncSession = Depends(get_session)):
+    """Latest ≈2 s rate sample per agent (current consumption)."""
+    fresh = datetime.now(timezone.utc) - timedelta(seconds=15)
+    rows = (await db.execute(select(LiveRate).where(LiveRate.ts >= fresh))).scalars().all()
+    return [
+        {"agent_id": r.agent_id, "ts": r.ts, "rx_bps": r.rx_bps, "tx_bps": r.tx_bps, "interfaces": r.interfaces}
+        for r in rows
+    ]
+
+
+# --------------------------------------------------------------------------- control-plane status
+def _read_cpu_times() -> tuple[int, int] | None:
+    try:
+        with open("/proc/stat") as f:
+            parts = f.readline().split()[1:]
+        vals = [int(x) for x in parts]
+        idle = vals[3] + (vals[4] if len(vals) > 4 else 0)
+        return sum(vals), idle
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def _mem_percent() -> float | None:
+    try:
+        info = {}
+        with open("/proc/meminfo") as f:
+            for line in f:
+                k, v = line.split(":", 1)
+                info[k] = int(v.split()[0])
+        total, avail = info["MemTotal"], info.get("MemAvailable", info.get("MemFree", 0))
+        return round(100.0 * (total - avail) / total, 1) if total else None
+    except (OSError, KeyError, ValueError):
+        return None
+
+
+@router.get("/system/status")
+async def system_status(_: User = Depends(require_viewer), db: AsyncSession = Depends(get_session)):
+    """Health of the control plane itself: API, database, worker and host load."""
+    import asyncio
+    import shutil
+
+    from .. import __version__
+    from ..worker import ADVISORY_LOCK_KEY
+
+    a = _read_cpu_times()
+    await asyncio.sleep(0.25)
+    b = _read_cpu_times()
+    cpu = None
+    if a and b and b[0] > a[0]:
+        cpu = round(100.0 * (1 - (b[1] - a[1]) / (b[0] - a[0])), 1)
+    try:
+        du = shutil.disk_usage("/")
+        disk = round(100.0 * du.used / du.total, 1)
+    except OSError:
+        disk = None
+    worker = (
+        await db.execute(
+            text(
+                "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND granted "
+                "AND database = (SELECT oid FROM pg_database WHERE datname = current_database()) "
+                "AND ((classid::bigint << 32) | objid::bigint) = :k"
+            ),
+            {"k": ADVISORY_LOCK_KEY},
+        )
+    ).scalar_one()
+    return {
+        "version": __version__,
+        "api": True,
+        "database": True,
+        "worker": worker > 0,
+        "cpu_percent": cpu,
+        "mem_percent": _mem_percent(),
+        "disk_percent": disk,
+        "usage_timezone": str(usage.usage_tz()),
+    }

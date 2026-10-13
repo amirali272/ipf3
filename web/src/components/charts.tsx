@@ -1,6 +1,8 @@
 import {
   Area,
   AreaChart,
+  Bar,
+  BarChart,
   CartesianGrid,
   Line,
   LineChart,
@@ -30,6 +32,8 @@ interface Props<T> {
   area?: boolean;
   yDomain?: [number | string, number | string];
   empty?: ReactNode;
+  /** Show point markers; default: only when there are few points. */
+  dots?: boolean;
 }
 
 function ChartTooltip({ active, payload, label, yFormat, tooltipX }: any) {
@@ -75,9 +79,10 @@ export function TimeChart<T extends object>({
   area = false,
   yDomain,
   empty = "No data reported in this period.",
+  dots,
 }: Props<T>) {
   if (!data.length) return <div className="flex items-center justify-center text-sm text-ink-500" style={{ height }}>{empty}</div>;
-  const dotsFor = (color: string) => (data.length <= 40 ? { r: 3, strokeWidth: 0, fill: color } : false);
+  const dotsFor = (color: string) => ((dots ?? data.length <= 40) ? { r: 3, strokeWidth: 0, fill: color } : false);
   const common = {
     data,
     margin: { top: 6, right: 8, bottom: 0, left: 0 },
@@ -177,5 +182,46 @@ export function Sparkline({ values, color = "var(--series-1)", height = 32 }: { 
         <Line type="monotone" dataKey="v" stroke={color} strokeWidth={2} dot={false} isAnimationActive={false} />
       </LineChart>
     </ResponsiveContainer>
+  );
+}
+
+/** Grouped daily bars (download / upload). Single y-axis, 2 px gap between bars. */
+export function DailyBars<T extends object>({
+  data,
+  xKey,
+  series,
+  yFormat,
+  xFormat,
+  tooltipX,
+  height = 240,
+}: {
+  data: T[];
+  xKey: keyof T & string;
+  series: SeriesDef[];
+  yFormat: (v: number) => string;
+  xFormat: (v: any) => string;
+  tooltipX?: (v: any) => string;
+  height?: number;
+}) {
+  if (!data.length) return <div className="flex items-center justify-center text-sm text-ink-500" style={{ height }}>No usage recorded yet.</div>;
+  return (
+    <div>
+      <Legend series={series} />
+      <ResponsiveContainer width="100%" height={height}>
+        <BarChart data={data} margin={{ top: 6, right: 8, bottom: 0, left: 0 }} barGap={2} barCategoryGap="20%">
+          <CartesianGrid stroke="var(--grid)" vertical={false} />
+          <XAxis dataKey={xKey} tickFormatter={xFormat} stroke="var(--axis)" tick={{ fontSize: 11 }} tickLine={false} axisLine={{ stroke: "var(--grid)" }} minTickGap={16} />
+          <YAxis tickFormatter={yFormat} stroke="var(--axis)" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={64} />
+          <Tooltip
+            content={<ChartTooltip yFormat={yFormat} tooltipX={tooltipX ?? xFormat} />}
+            cursor={{ fill: "rgba(255,255,255,0.04)" }}
+            isAnimationActive={false}
+          />
+          {series.map((s, i) => (
+            <Bar key={s.key} dataKey={s.key} name={s.label} fill={s.color ?? SERIES[i]} radius={[4, 4, 0, 0]} maxBarSize={22} isAnimationActive={false} />
+          ))}
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
   );
 }

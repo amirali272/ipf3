@@ -17,6 +17,7 @@ class AgentConfig:
     name: str = ""
     ca_file: str | None = None
     metrics_interval: float = 10.0
+    live_interval: float = 2.0
     inventory_interval: float = 60.0
     heartbeat_interval: float = 60.0
     max_concurrent_jobs: int = 2

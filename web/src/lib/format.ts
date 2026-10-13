@@ -92,3 +92,21 @@ export const RANGES: { label: string; seconds: number }[] = [
   { label: "7d", seconds: 7 * 86400 },
   { label: "30d", seconds: 30 * 86400 },
 ];
+
+/** Data volume in decimal units (as ISPs and hosting providers bill traffic). */
+export function fmtTraffic(v: number | null | undefined, digits = 2): string {
+  if (v === null || v === undefined || Number.isNaN(v)) return "—";
+  const units: [string, number][] = [
+    ["TB", 1e12],
+    ["GB", 1e9],
+    ["MB", 1e6],
+    ["KB", 1e3],
+  ];
+  for (const [u, d] of units) if (Math.abs(v) >= d) return `${(v / d).toFixed(digits)} ${u}`;
+  return `${Math.round(v)} B`;
+}
+
+export function pctChange(now: number, before: number): number | null {
+  if (!before) return null;
+  return ((now - before) / before) * 100;
+}
