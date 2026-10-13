@@ -117,6 +117,40 @@ async def nodes(_: User = Depends(require_viewer), db: AsyncSession = Depends(ge
 
 
 # ============================================================================ inbounds
+_LISTEN_STATES = {"LISTEN", "UNCONN"}
+
+
+async def _port_in_use(db: AsyncSession, agent_id: str, port: int, network: str, exclude_inbound: int | None = None) -> bool:
+    """True when the node's last inventory shows something else listening on the port
+    (e.g. nginx on 443 on the panel server). Ports of our own inbounds don't count."""
+    from ..models import AgentInventory
+
+    own = (
+        await db.execute(select(XrayInbound.id).where(XrayInbound.agent_id == agent_id, XrayInbound.port == port))
+    ).scalars().all()
+    if any(i != exclude_inbound for i in own):
+        return False  # handled by the unique constraint
+    if own:
+        return False  # the listener is our own Xray inbound being edited
+    inv = await db.get(AgentInventory, agent_id)
+    for c in (inv.connections if inv else []) or []:
+        if c.get("state") not in _LISTEN_STATES:
+            continue
+        if c.get("proto", "tcp").startswith("udp") and c.get("state") != "UNCONN":
+            continue
+        local = str(c.get("local", ""))
+        if local.rsplit(":", 1)[-1] == str(port) and not local.startswith(("127.", "[::1]", "::1")):
+            if c.get("proto", "tcp").startswith("tcp") or network == "tcp":
+                return True
+    return False
+
+
+def _port_conflict(port: int) -> HTTPException:
+    hint = " — it is the panel's HTTPS port; use e.g. 8443 or 2053" if port in (80, 443) else ""
+    return HTTPException(409, f"Port {port} is already in use on this server{hint}")
+
+
+
 def inbound_out(i: XrayInbound, names: dict[str, str], users: list[VpnUser]) -> InboundOut:
     out = InboundOut.model_validate(i)
     out.agent_name = names.get(i.agent_id)
@@ -136,6 +170,8 @@ async def list_inbounds(_: User = Depends(require_viewer), db: AsyncSession = De
 async def create_inbound(body: InboundIn, request: Request, admin: User = Depends(require_admin), db: AsyncSession = Depends(get_session)):
     if await db.get(Agent, body.agent_id) is None:
         raise HTTPException(404, "Node not found")
+    if await _port_in_use(db, body.agent_id, body.port, body.network):
+        raise _port_conflict(body.port)
     row = XrayInbound(
         agent_id=body.agent_id,
         remark=body.remark,
@@ -168,6 +204,8 @@ async def update_inbound(inbound_id: int, body: InboundUpdate, request: Request,
         if await db.get(Agent, body.agent_id) is None:
             raise HTTPException(404, "Node not found")
         row.agent_id = body.agent_id
+    if (body.port != row.port or body.agent_id) and await _port_in_use(db, row.agent_id, body.port, body.network, exclude_inbound=row.id):
+        raise _port_conflict(body.port)
     for f in ("remark", "protocol", "port", "listen", "network", "security", "address", "enabled"):
         setattr(row, f, getattr(body, f))
     row.settings = body.settings.model_dump()

@@ -48,7 +48,7 @@ interface Draft {
 }
 
 const PRESETS: { id: string; label: string; hint: string; recommended?: boolean; apply: (d: Draft) => Draft }[] = [
-  { id: "reality-vision", label: "VLESS · REALITY · Vision", hint: "Best default. No domain or certificate needed.", recommended: true, apply: (d) => ({ ...d, protocol: "vless", network: "tcp", security: "reality", port: d.port || 443, settings: { ...d.settings, flow: "xtls-rprx-vision" } }) },
+  { id: "reality-vision", label: "VLESS · REALITY · Vision", hint: "Best default. No domain or certificate needed.", recommended: true, apply: (d) => ({ ...d, protocol: "vless", network: "tcp", security: "reality", port: d.port || 8443, settings: { ...d.settings, flow: "xtls-rprx-vision" } }) },
   { id: "reality-xhttp", label: "VLESS · REALITY · XHTTP", hint: "Modern transport recommended by Xray.", recommended: true, apply: (d) => ({ ...d, protocol: "vless", network: "xhttp", security: "reality", settings: { ...d.settings, flow: "", path: "/" } }) },
   { id: "ws-tls", label: "VLESS · WebSocket · TLS", hint: "For CDNs (e.g. Cloudflare). Needs a domain + certificate.", apply: (d) => ({ ...d, protocol: "vless", network: "ws", security: "tls", settings: { ...d.settings, flow: "", path: "/ws" } }) },
   { id: "trojan-tls", label: "Trojan · TLS", hint: "Needs a domain + certificate.", apply: (d) => ({ ...d, protocol: "trojan", network: "tcp", security: "tls", settings: { ...d.settings, flow: "" } }) },
@@ -98,7 +98,7 @@ function InboundModal({ inbound, nodes, onClose }: { inbound: Inbound | "new"; n
   const firstNode = nodes.find((n) => n.xray_installed) ?? nodes[0];
   const [d, setD] = useState<Draft>(() =>
     isNew
-      ? { agent_id: firstNode?.agent_id ?? "", remark: "", protocol: "vless", port: 443, listen: "", network: "tcp", security: "reality", address: firstNode?.remote_addr && !/^(127\.|10\.|192\.168\.)/.test(firstNode.remote_addr) ? firstNode.remote_addr : window.location.hostname, settings: { ...DEFAULT_SETTINGS, flow: "xtls-rprx-vision" }, enabled: true }
+      ? { agent_id: firstNode?.agent_id ?? "", remark: "", protocol: "vless", port: 8443, listen: "", network: "tcp", security: "reality", address: firstNode?.remote_addr && !/^(127\.|10\.|192\.168\.)/.test(firstNode.remote_addr) ? firstNode.remote_addr : window.location.hostname, settings: { ...DEFAULT_SETTINGS, flow: "xtls-rprx-vision" }, enabled: true }
       : { agent_id: inbound.agent_id, remark: inbound.remark, protocol: inbound.protocol, port: inbound.port, listen: inbound.listen, network: inbound.network, security: inbound.security, address: inbound.address, settings: { ...DEFAULT_SETTINGS, ...inbound.settings }, enabled: inbound.enabled },
   );
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setD((s) => ({ ...s, [k]: v }));

@@ -226,3 +226,22 @@ def _selfsigned(tmp_path):
                     "-keyout", str(k), "-out", str(c), "-subj", "/CN=vpn.example.net", "-addext", "subjectAltName=DNS:vpn.example.net"],
                    check=True, capture_output=True)
     return c.read_text(), k.read_text()
+
+
+async def test_port_already_used_on_node_is_rejected(admin, anon):
+    agent_id, h = await _node(admin, anon)
+    inv = {"connections": [{"proto": "tcp", "state": "LISTEN", "local": "0.0.0.0:443", "peer": "0.0.0.0:*"},
+                           {"proto": "tcp", "state": "LISTEN", "local": "127.0.0.1:5432", "peer": "0.0.0.0:*"}]}
+    assert (await anon.post("/api/agent/v1/inventory", headers=h, json=inv)).status_code == 204
+    r = await admin.post("/api/v1/vpn/inbounds", json={"agent_id": agent_id, "remark": "x", "protocol": "vless", "port": 443, "address": "203.0.113.1"})
+    assert r.status_code == 409 and "8443" in r.json()["detail"]
+    # loopback-only listeners don't block public inbounds
+    ib = await _inbound(admin, agent_id, port=5432)
+    # editing our own inbound on the same port is fine even though it is listening now
+    inv["connections"].append({"proto": "tcp", "state": "LISTEN", "local": "*:5432", "peer": "*:*"})
+    await anon.post("/api/agent/v1/inventory", headers=h, json=inv)
+    body = {k: ib[k] for k in ("agent_id", "remark", "protocol", "port", "listen", "network", "security", "address", "settings", "enabled")}
+    body["remark"] = "renamed"
+    assert (await admin.put(f"/api/v1/vpn/inbounds/{ib['id']}", json=body)).status_code == 200
+    body["port"] = 443
+    assert (await admin.put(f"/api/v1/vpn/inbounds/{ib['id']}", json=body)).status_code == 409
