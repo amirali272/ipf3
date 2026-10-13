@@ -49,6 +49,13 @@ are tested too.
 Parser fixtures in `server/tests/fixtures` follow the real output formats of iperf3
 3.16 (`-J`), iputils ping, traceroute 2.1 and mtr 0.95 (`--json`).
 
+## Web UI build
+
+`web/dist` is committed prebuilt, stamped with a fingerprint of the sources in
+`web/dist/BUILD_ID`. Installers use it directly when the fingerprint matches, so servers
+need neither Node.js nor npm. After changing anything under `web/`, run
+`scripts/build-web.sh` and commit `web/dist`. CI fails if it's stale.
+
 ## Database migrations
 
 After changing `models.py`:

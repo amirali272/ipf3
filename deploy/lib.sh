@@ -47,6 +47,17 @@ ensure_etc_dir() {
   chmod 0755 /etc/ipf3
 }
 
+# Fingerprint of the web UI sources. web/dist is committed prebuilt together with
+# web/dist/BUILD_ID; when they match, servers need neither Node.js nor npm.
+web_source_hash() {
+  (cd "$1/web" && find src public index.html package.json package-lock.json vite.config.ts tailwind.config.js \
+      postcss.config.js tsconfig.json -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)
+}
+
+prebuilt_web_ok() {
+  [[ -f "$1/web/dist/index.html" && -f "$1/web/dist/BUILD_ID" ]] && [[ "$(cat "$1/web/dist/BUILD_ID")" == "$(web_source_hash "$1")" ]]
+}
+
 # Run ipf3-server as the service account with the production environment.
 ipf3_cli() {
   runuser -u ipf3 -- bash -c 'set -a; . /etc/ipf3/server.env; set +a; exec /opt/ipf3/venv/bin/ipf3-server "$@"' ipf3-server "$@"

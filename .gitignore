@@ -9,7 +9,6 @@ dist/
 .ruff_cache/
 .mypy_cache/
 node_modules/
-web/dist/
 *.log
 .env
 *.env.local

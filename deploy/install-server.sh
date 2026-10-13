@@ -60,6 +60,9 @@ done
 
 require_root
 require_ubuntu
+if [[ $SKIP_WEB_BUILD -eq 0 ]] && prebuilt_web_ok "$(repo_root)"; then
+  SKIP_WEB_BUILD=1   # prebuilt UI matches the sources: no Node.js needed
+fi
 [[ -n "$DOMAIN" ]] || { usage; die "--domain is required"; }
 [[ "$DOMAIN" =~ ^[A-Za-z0-9.:-]+$ ]] || die "invalid --domain"
 [[ "$ADMIN_USER" =~ ^[A-Za-z0-9_.-]{3,64}$ ]] || die "invalid --admin-user"

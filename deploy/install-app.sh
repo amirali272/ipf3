@@ -17,6 +17,9 @@ require_root
 
 REPO="$(repo_root)"
 PREFIX=/opt/ipf3
+if [[ $SKIP_WEB_BUILD -eq 0 ]] && prebuilt_web_ok "$REPO"; then
+  SKIP_WEB_BUILD=1
+fi
 
 info "Python environment"
 if [[ ! -x "$PREFIX/venv/bin/python" ]]; then
@@ -28,6 +31,7 @@ fi
 
 info "Web UI"
 if [[ $SKIP_WEB_BUILD -eq 1 ]]; then
+  info "Using the prebuilt web UI"
   [[ -f "$REPO/web/dist/index.html" ]] || die "web/dist not found; build it first (cd web && npm ci && npm run build)"
   DIST="$REPO/web/dist"
 else
@@ -36,11 +40,13 @@ else
   trap 'rm -rf "$BUILD"' EXIT
   rsync -a --exclude node_modules --exclude dist "$REPO/web/" "$BUILD/"
   chown -R ipf3:ipf3 "$BUILD"
-  runuser -u ipf3 -- env HOME="$BUILD" npm_config_cache="$BUILD/.npm" bash -c "cd '$BUILD' && npm ci --no-audit --no-fund && npm run build" >/dev/null
+  command -v npm >/dev/null || die "web/dist does not match the sources and npm is not installed; run scripts/build-web.sh on a machine with Node.js"
+  info "Building the web UI with npm (this can take a few minutes)"
+  runuser -u ipf3 -- env HOME="$BUILD" npm_config_cache="$BUILD/.npm" bash -c "cd '$BUILD' && npm ci --no-audit --no-fund && npm run build"
   DIST="$BUILD/dist"
 fi
 install -d -m 0755 "$PREFIX/web"
-rsync -a --delete "$DIST/" "$PREFIX/web/"
+rsync -a --delete --exclude BUILD_ID "$DIST/" "$PREFIX/web/"
 chown -R root:root "$PREFIX/web"
 find "$PREFIX/web" -type d -exec chmod 0755 {} + -o -type f -exec chmod 0644 {} +
 

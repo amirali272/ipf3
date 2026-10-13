@@ -100,11 +100,19 @@ choose() { # choose VAR "option 1" "option 2" ... -> VAR = 1..n
 run_step() { # run_step "Label" cmd args...
   local label="$1"; shift
   printf '\n==== %s (%s)\n' "$label" "$(date -Is)" >>"$LOG"
+  local from; from=$(wc -l <"$LOG")
   ( "$@" ) >>"$LOG" 2>&1 &
-  local pid=$! frames='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏' i=0 start=$SECONDS
+  local pid=$! i=0 start=$SECONDS detail="" cols
+  local frames=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
+  cols=$(tput cols 2>/dev/null || echo 100)
   if [[ -t 1 ]]; then
     while kill -0 "$pid" 2>/dev/null; do
-      printf '\r   %s%s%s %s %s(%ss)%s ' "$G" "${frames:i++%${#frames}:1}" "$R" "$label" "$GR" "$((SECONDS - start))" "$R"
+      # Show the current sub-step ("==> ..." lines written by the deploy scripts).
+      if (( i % 8 == 0 )); then
+        detail=$(tail -n +"$from" "$LOG" | grep -a '==>' | tail -n 1 | sed -e 's/\x1b\[[0-9;]*m//g' -e 's/^.*==> //')
+      fi
+      local frame="${frames[i++ % ${#frames[@]}]}" text="$label${detail:+ - $detail} ($((SECONDS - start))s)"
+      printf '\r\e[K   %s%s%s %s' "$G" "$frame" "$R" "${text:0:$((cols - 8))}"
       sleep 0.12
     done
   fi
