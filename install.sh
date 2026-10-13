@@ -15,6 +15,21 @@ FALLBACK_BRANCH="claude/gracious-ramanujan-enb5r9"   # used until the code is me
 SRC_DIR="${UM_SRC_DIR:-/opt/unknown-monitor/src}"
 LOG=/var/log/unknown-monitor-install.log
 
+# Non-interactive node install (command shown in the panel under "Add node"):
+#   bash <(curl -fsSL .../install.sh) --node --panel https://panel.example.com --token ipf3e_... [--name de-1] [--iperf3]
+NODE_MODE=0; ARG_PANEL=""; ARG_TOKEN=""; ARG_NAME=""; ARG_IPERF=0; ARG_YES=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --node) NODE_MODE=1; shift ;;
+    --panel) ARG_PANEL="$2"; shift 2 ;;
+    --token) ARG_TOKEN="$2"; shift 2 ;;
+    --name) ARG_NAME="$2"; shift 2 ;;
+    --iperf3) ARG_IPERF=1; shift ;;
+    --yes|-y) ARG_YES=1; shift ;;
+    *) echo "unknown option: $1"; exit 1 ;;
+  esac
+done
+
 # ----------------------------------------------------------------------------- look & feel
 if [[ -t 1 ]]; then
   B=$'\e[1m'; R=$'\e[0m'
@@ -317,6 +332,53 @@ install_agent() { # uses PANEL_URL, TOKEN, AGENT_NAME, IPERF, CA_FILE
   run_step "Installing monitoring agent" "$REPO/deploy/install-agent.sh" "${args[@]}"
 }
 
+# ----------------------------------------------------------------------------- node mode
+connect_panel() { # validates PANEL_URL reachability, sets CA_FILE (trusting a self-signed cert if needed)
+  [[ "$PANEL_URL" == http*://* ]] || PANEL_URL="https://$PANEL_URL"
+  PANEL_URL="${PANEL_URL%/}"; PANEL_URL="${PANEL_URL/http:\/\//https://}"
+  local host="${PANEL_URL#https://}"; host="${host%%/*}"
+  CA_FILE=""
+  if curl -fsS --max-time 10 "$PANEL_URL/healthz" >/dev/null 2>&1; then ok "Panel reachable ($PANEL_URL)"; return 0; fi
+  if curl -kfsS --max-time 10 "$PANEL_URL/healthz" >/dev/null 2>&1; then
+    if [[ $ARG_YES -eq 1 ]]; then
+      warn "Panel uses a self-signed certificate; trusting it (--yes)"
+      echo | timeout 10 openssl s_client -connect "$host:443" -servername "$host" 2>/dev/null | openssl x509 > /tmp/um-ca.pem
+      install -d -m 0755 /etc/ipf3 && install -m 0644 /tmp/um-ca.pem /etc/ipf3/server-ca.pem && rm -f /tmp/um-ca.pem
+      CA_FILE=/etc/ipf3/server-ca.pem
+    else
+      fetch_ca "$host"
+    fi
+    ok "Panel reachable ($PANEL_URL)"
+    return 0
+  fi
+  return 1
+}
+
+if [[ $NODE_MODE -eq 1 ]]; then
+  section "Add this server as a VPN node"
+  [[ -n "$ARG_PANEL" && -n "$ARG_TOKEN" ]] || fail "--panel and --token are required (copy the full command from the panel: Inbounds & nodes → Add node)."
+  [[ "$ARG_TOKEN" =~ ^ipf3e_[A-Za-z0-9_-]{20,}$ ]] || fail "The token looks wrong — copy the command again from the panel."
+  PANEL_URL="$ARG_PANEL"
+  connect_panel || fail "Cannot reach $ARG_PANEL/healthz from this server — check the address and that port 443 is open."
+  TOKEN="$ARG_TOKEN"
+  AGENT_NAME="${ARG_NAME:-$(hostname -s)}"
+  [[ "$AGENT_NAME" =~ ^[A-Za-z0-9_.@-]{1,128}$ ]] || fail "invalid --name (letters, digits and . _ @ - only)"
+  XRAY=1; IPERF=$ARG_IPERF
+  printf '\n'
+  install_agent
+  {
+    echo "Node \"$AGENT_NAME\" is connected to $PANEL_URL"
+    echo ""
+    echo "In the panel: VPN → Inbounds & nodes → New inbound,"
+    echo "choose this node as the server. Port 443 is free here."
+    echo ""
+    echo "If this server has a firewall, open the inbound port,"
+    echo "e.g.: ufw allow 443"
+  } | summary_box
+  printf '\n'
+  exit 0
+fi
+
 # ----------------------------------------------------------------------------- menu
 section "What would you like to do?" "Version $VERSION"
 printf '\n'
@@ -384,11 +446,7 @@ case "$MODE" in
     section "Connect to your panel" "Create a token in the panel: Servers → Enroll server."
     while true; do
       ask PANEL_URL "Panel address (e.g. https://monitor.example.com)" ""
-      [[ "$PANEL_URL" == http*://* ]] || PANEL_URL="https://$PANEL_URL"
-      PANEL_URL="${PANEL_URL%/}"; PANEL_URL="${PANEL_URL/http:\/\//https://}"
-      host="${PANEL_URL#https://}"; host="${host%%/*}"
-      if curl -fsS --max-time 10 "$PANEL_URL/healthz" >/dev/null 2>&1; then ok "Panel reachable"; CA_FILE=""; break; fi
-      if curl -kfsS --max-time 10 "$PANEL_URL/healthz" >/dev/null 2>&1; then fetch_ca "$host"; ok "Panel reachable"; break; fi
+      connect_panel && break
       warn "Cannot reach $PANEL_URL/healthz — check the address and that port 443 is open."
     done
     while true; do

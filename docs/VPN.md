@@ -14,6 +14,30 @@ reports per-user traffic every 10 seconds.
 
 ## Enabling a node
 
+### Adding a node on another server
+
+Inbounds can be served from any number of servers. The panel stays where it is, and
+clients connect directly to the node.
+
+1. In the panel, go to **VPN → Inbounds & nodes → Add node**, enter a name, then
+   click **Generate command**.
+2. Run the command it shows, as root, on the new Ubuntu 22.04/24.04 server:
+
+   ```bash
+   bash <(curl -fsSL "https://raw.githubusercontent.com/amirali272/ipf3/claude/gracious-ramanujan-enb5r9/install.sh?$(date +%s)") \
+     --node --panel https://panel.example.com --token ipf3e_… --name de-1
+   ```
+
+   It installs the agent and Xray, enrolls with the single-use token (valid 24 h) and
+   starts reporting. A self-signed panel certificate is trusted automatically in this
+   mode. Add `--iperf3` to also run an iperf3 endpoint there.
+3. The dialog shows **Connected** once the node reports in. When you create an
+   inbound, pick the node as its server. Port 443 is free on a node, so you can use it
+   there (`ufw allow 443` if the firewall is enabled). Share links use the node's
+   address unless you set a different one on the inbound.
+
+### Other ways to enable a node
+
 - **New server:** run `sudo ./install.sh`, choose *Install panel + agent* or *Add this
   server to an existing panel*, and answer **yes** to "Use this server as a VPN node".
 - **Existing agent:** run `sudo ./install.sh`, choose *Upgrade*, and answer **yes**. Or

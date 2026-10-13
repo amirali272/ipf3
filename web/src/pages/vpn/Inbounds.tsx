@@ -3,7 +3,8 @@ import { Activity, AlertTriangle, CheckCircle2, Copy, Edit3, KeyRound, Lock, Plu
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api/client";
-import type { Inbound, InboundSettings, VpnNetwork, VpnNode, VpnProtocol, VpnSecurity } from "../../api/types";
+import type { EnrollmentToken, Inbound, InboundSettings, VpnNetwork, VpnNode, VpnProtocol, VpnSecurity } from "../../api/types";
+import { CopyButton } from "../../components/vpn";
 import { Card, Empty, ErrorText, Field, Modal } from "../../components/ui";
 import { fmtRelative, fmtTraffic } from "../../lib/format";
 import { useAuth } from "../../lib/auth";
@@ -434,10 +435,83 @@ function NodeCard({ n }: { n: VpnNode }) {
   );
 }
 
+const INSTALL_URL = "https://raw.githubusercontent.com/amirali272/ipf3/claude/gracious-ramanujan-enb5r9/install.sh";
+
+function AddNodeModal({ onClose }: { onClose: () => void }) {
+  const qc = useQueryClient();
+  const [name, setName] = useState("");
+  const [iperf, setIperf] = useState(false);
+  const [token, setToken] = useState<EnrollmentToken | null>(null);
+  const create = useMutation({
+    mutationFn: () => api<EnrollmentToken>("/enrollment-tokens", { method: "POST", json: { note: `node: ${name}`, ttl_hours: 24 } }),
+    onSuccess: (t) => { setToken(t); qc.invalidateQueries({ queryKey: ["enrollment-tokens"] }); },
+  });
+  const { data: tokens = [] } = useQuery({
+    queryKey: ["enrollment-tokens"],
+    queryFn: () => api<EnrollmentToken[]>("/enrollment-tokens"),
+    enabled: !!token,
+    refetchInterval: 3000,
+  });
+  const { data: nodes = [] } = useQuery({ queryKey: ["vpn-nodes"], queryFn: () => api<VpnNode[]>("/vpn/nodes"), enabled: !!token, refetchInterval: 3000 });
+  const used = token ? tokens.find((t) => t.id === token.id && t.agent_id) : undefined;
+  const node = used ? nodes.find((n) => n.agent_id === used.agent_id) : undefined;
+  const valid = /^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/.test(name);
+  const cmd = token
+    ? `bash <(curl -fsSL "${INSTALL_URL}?$(date +%s)") --node --panel ${window.location.origin} --token ${token.token} --name ${name}${iperf ? " --iperf3" : ""}`
+    : "";
+  return (
+    <Modal open onClose={onClose} title="Add node" wide>
+      {!token ? (
+        <div className="space-y-4">
+          <p className="text-sm text-ink-300">
+            A node is another Ubuntu server (22.04 / 24.04) that runs Xray and serves inbounds. The panel stays here; users
+            connect directly to the node.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Node name"><input className="input" value={name} onChange={(e) => setName(e.target.value.trim())} placeholder="e.g. de-1" maxLength={63} autoFocus /></Field>
+            <label className="flex items-center gap-2 self-end pb-2 text-sm text-ink-300">
+              <input type="checkbox" checked={iperf} onChange={(e) => setIperf(e.target.checked)} />Also run an iperf3 endpoint
+            </label>
+          </div>
+          <ErrorText error={create.error} />
+          <div className="flex justify-end gap-2">
+            <button className="btn-ghost" onClick={onClose}>Cancel</button>
+            <button className="btn-primary" disabled={!valid || create.isPending} onClick={() => create.mutate()}><KeyRound size={15} />Generate command</button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="text-sm text-ink-300">
+            <b className="text-ink-100">1.</b> Run this as root on the new server. The command is single-use and valid for 24 hours.
+          </div>
+          <div className="relative rounded-xl border border-ink-700 bg-ink-950 p-3 pr-24">
+            <code className="block break-all font-mono text-xs leading-relaxed text-emerald-300">{cmd}</code>
+            <CopyButton text={cmd} className="absolute right-2 top-2" />
+          </div>
+          <div className="text-sm text-ink-300">
+            <b className="text-ink-100">2.</b> Wait for the node to connect, then create inbounds and choose <b className="text-ink-100">{name}</b> as the server.
+          </div>
+          <div className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-sm ${node?.online ? "border-emerald-700/60 bg-emerald-950/30 text-emerald-300" : "border-ink-700 bg-ink-900/60 text-ink-300"}`}>
+            {node?.online ? (
+              <><CheckCircle2 size={18} />Connected — {node.name}{node.xray_installed ? ` · Xray ${node.xray_version ?? ""}` : " · installing Xray…"}</>
+            ) : used ? (
+              <><span className="h-2 w-2 animate-pulse rounded-full bg-sky-400" />Enrolled, waiting for the first report…</>
+            ) : (
+              <><span className="h-2 w-2 animate-pulse rounded-full bg-amber-400" />Waiting for the node to connect…</>
+            )}
+          </div>
+          <div className="flex justify-end"><button className={node?.online ? "btn-primary" : "btn-ghost"} onClick={onClose}>Done</button></div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 export default function VpnInbounds() {
   const { can } = useAuth();
   const qc = useQueryClient();
   const [editing, setEditing] = useState<{ inbound: Inbound | "new"; preset?: string } | null>(null);
+  const [adding, setAdding] = useState(false);
   const { data: inbounds = [] } = useQuery({ queryKey: ["vpn-inbounds"], queryFn: () => api<Inbound[]>("/vpn/inbounds"), refetchInterval: 10000 });
   const { data: nodes = [] } = useQuery({ queryKey: ["vpn-nodes"], queryFn: () => api<VpnNode[]>("/vpn/nodes"), refetchInterval: 5000 });
   const del = useMutation({
@@ -457,7 +531,12 @@ export default function VpnInbounds() {
           <h1 className="text-3xl font-bold tracking-tight text-ink-100">Inbounds</h1>
           <p className="mt-1 text-sm text-ink-400">Xray listeners on your nodes — users connect through these</p>
         </div>
-        {admin && <button className="btn-primary" disabled={!nodes.length} onClick={() => setEditing({ inbound: "new" })}><Plus size={15} />New inbound</button>}
+        {admin && (
+          <div className="flex gap-2">
+            <button className="btn-ghost" onClick={() => setAdding(true)}><Server size={15} />Add node</button>
+            <button className="btn-primary" disabled={!nodes.length} onClick={() => setEditing({ inbound: "new" })}><Plus size={15} />New inbound</button>
+          </div>
+        )}
       </div>
 
       {inbounds.length > 0 && (
@@ -509,12 +588,23 @@ export default function VpnInbounds() {
       )}
       <ErrorText error={del.error || toggle.error} />
 
-      <h2 className="mb-3 mt-10 text-xs font-semibold uppercase tracking-wider text-ink-400">Nodes</h2>
+      <div className="mb-3 mt-10 flex items-center justify-between">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-400">Nodes</h2>
+        {admin && <button className="text-xs font-medium text-emerald-300 hover:text-emerald-200" onClick={() => setAdding(true)}>+ Add node</button>}
+      </div>
       {nodes.length === 0 ? (
-        <Card><Empty>No servers yet. Run the installer on a server and answer yes to “VPN node”.</Empty></Card>
+        <Card><Empty>No nodes yet. {admin ? <button className="text-emerald-300 hover:underline" onClick={() => setAdding(true)}>Add a node</button> : "An admin can add one."}</Empty></Card>
       ) : (
-        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">{nodes.map((n) => <NodeCard key={n.agent_id} n={n} />)}</div>
+        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+          {nodes.map((n) => <NodeCard key={n.agent_id} n={n} />)}
+          {admin && (
+            <button onClick={() => setAdding(true)} className="flex min-h-[180px] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-ink-600 text-ink-400 transition hover:border-emerald-600 hover:text-emerald-300">
+              <Plus size={22} /><span className="text-sm font-medium">Add node</span><span className="text-xs text-ink-500">Serve inbounds from another server</span>
+            </button>
+          )}
+        </div>
       )}
+      {adding && <AddNodeModal onClose={() => setAdding(false)} />}
       {editing && <InboundModal inbound={editing.inbound} preset={editing.preset} nodes={nodes} onClose={() => setEditing(null)} />}
     </>
   );
