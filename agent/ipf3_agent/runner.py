@@ -135,6 +135,7 @@ class Agent:
             except BaseException:
                 self.xray_traffic.restore(pending, pending_ib, pending_ob)
                 raise
+        online = await xray.online_users(self.xray_api_port)
         await self._request(
             "POST",
             "/xray/state",
@@ -143,7 +144,8 @@ class Agent:
                 "version": await xray.version(),
                 "running": await xray.is_running(),
                 "error": self.xray_error,
-                "online_users": await xray.online_users(self.xray_api_port),
+                "online_users": online,
+                "online_ips": await xray.online_ips(self.xray_api_port, online) if online else {},
             },
         )
 

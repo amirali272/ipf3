@@ -47,3 +47,18 @@ async def test_apply_validates_and_installs(tmp_path, monkeypatch):
     assert err and xray.current_hash() == "h1"  # previous config kept
     assert json.loads((tmp_path / "config.json").read_text()) == good
     assert (await xray.version()).count(".") >= 1
+
+
+async def test_online_ips_parses_xray_output(monkeypatch):
+    replies = {
+        "u1": (0, '{"ips": {"203.0.113.5": 1791928137, "198.51.100.2": "1791928100"}, "name": "user>>>u1>>>online"}'),
+        "u2": (0, '{"name": "user>>>u2>>>online"}'),
+        "u3": (1, "failed to get stats: not found"),
+    }
+
+    async def fake_run(*args, timeout=20):
+        return replies[args[-1]]
+
+    monkeypatch.setattr(xray, "_run", fake_run)
+    got = await xray.online_ips(10085, ["u1", "u2", "u3"])
+    assert got == {"u1": {"203.0.113.5": 1791928137, "198.51.100.2": 1791928100}}

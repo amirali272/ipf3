@@ -302,6 +302,7 @@ async def xray_state(body: XrayStateIn, agent: Agent = Depends(current_agent), d
         "running": body.running,
         "error": body.error,
         "online_users": body.online_users,
+        "online_ips": body.online_ips,
         "updated_at": now,
     }
     if body.applied_hash:

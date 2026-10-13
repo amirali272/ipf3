@@ -83,6 +83,24 @@ a firewall, open the inbound port, for example `ufw allow 8443`.
 Configs block access to private networks (`geoip:private`, which includes the node's
 localhost services) and BitTorrent.
 
+## Who is connected
+
+**Connected IPs.** Every ~10 s, each node reads Xray's per-user online IP list
+(`statsonlineiplist`) and reports it to the panel. On the Users page, each user with
+active connections gets an `N IP` badge. *Activity* lists every connected IP with its
+node and last activity. Xray does not track clients connecting from loopback
+addresses.
+
+**Apps.** Each subscription update is recorded. The record holds the app's User-Agent
+(v2rayNG, Hiddify, Streisand, Happ, Clash Meta, sing-box, …), its version, the IP it
+came from and an update count. The panel keeps the 20 most recent apps per user.
+
+**Subscription page.** This is the page users see when they open their link in a
+browser. It shows usage, expiry, connected IPs and apps, one-tap import buttons and QR
+codes, in Persian or English.
+
+Connected IPs need agents upgraded to this version.
+
 ## Outbounds & routing
 
 **VPN → Outbounds & routing** lets a node send user traffic on to another server

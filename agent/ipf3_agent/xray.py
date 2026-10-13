@@ -177,3 +177,29 @@ async def online_users(api_port: int) -> list[str]:
         parts = name.split(">>>")
         out_users.append(parts[1] if len(parts) >= 2 else name)
     return out_users
+
+
+async def online_ips(api_port: int, emails: list[str], limit: int = 500) -> dict[str, dict[str, int]]:
+    """Client IPs (with last-seen unix time) of each online user, from Xray's
+    per-user online map. Loopback clients are not tracked by Xray."""
+    sem = asyncio.Semaphore(8)
+
+    async def one(email: str) -> tuple[str, dict[str, int]]:
+        async with sem:
+            code, out = await _run(XRAY_BIN, "api", "statsonlineiplist", "-s", f"127.0.0.1:{api_port}", "-email", email, timeout=10)
+        if code != 0:
+            return email, {}
+        try:
+            ips = json.loads(out).get("ips") or {}
+        except (json.JSONDecodeError, AttributeError):
+            return email, {}
+        clean: dict[str, int] = {}
+        for ip, ts in list(ips.items())[:32]:
+            try:
+                clean[str(ip)[:64]] = int(ts)
+            except (TypeError, ValueError):
+                continue
+        return email, clean
+
+    results = await asyncio.gather(*(one(e) for e in emails[:limit]))
+    return {e: ips for e, ips in results if ips}

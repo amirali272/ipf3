@@ -350,6 +350,7 @@ export interface VpnUser {
   created_at: string;
   last_online_at: string | null;
   online: boolean;
+  online_ips: number;
   sub_token: string;
   sub_url: string;
 }
@@ -392,6 +393,31 @@ export interface SubInfo {
   online: boolean;
   sub_url: string;
   links: string[];
+  connections: Connection[];
+  apps: { app: string; version: string; last_at: string }[];
+  last_online_at: string | null;
+}
+
+export interface Connection {
+  ip: string;
+  node: string;
+  last_seen: string;
+}
+
+export interface UserApp {
+  app: string;
+  version: string;
+  user_agent: string;
+  last_ip: string;
+  first_at: string;
+  last_at: string;
+  fetches: number;
+}
+
+export interface UserActivity {
+  connections: Connection[];
+  apps: UserApp[];
+  last_online_at: string | null;
 }
 
 export interface Outbound {

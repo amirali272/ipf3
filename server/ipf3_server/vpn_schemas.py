@@ -242,6 +242,7 @@ class VpnUserOut(BaseModel):
     created_at: datetime
     last_online_at: datetime | None
     online: bool = False
+    online_ips: int = 0
     sub_token: str
     sub_url: str = ""
 
@@ -253,6 +254,24 @@ class XrayStateIn(BaseModel):
     running: bool = False
     error: str | None = Field(None, max_length=4000)
     online_users: list[str] = Field(default_factory=list, max_length=100000)
+    online_ips: dict[str, dict[str, int]] = Field(default_factory=dict, max_length=100000)
+
+    @field_validator("online_ips")
+    @classmethod
+    def _ips(cls, v: dict[str, dict[str, int]]) -> dict[str, dict[str, int]]:
+        out: dict[str, dict[str, int]] = {}
+        for email, ips in v.items():
+            if not (email.startswith("u") and email[1:].isdigit()):
+                continue
+            good = {}
+            for ip, ts in list(ips.items())[:32]:
+                try:
+                    good[str(ipaddress.ip_address(ip))] = int(ts)
+                except ValueError:
+                    continue
+            if good:
+                out[email] = good
+        return out
 
 
 class XrayTraffic(BaseModel):

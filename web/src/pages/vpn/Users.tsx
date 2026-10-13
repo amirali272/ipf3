@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Ban, Edit3, KeyRound, Link2, MoreVertical, Plus, QrCode as QrIcon, RotateCcw, Search, Trash2, UserCheck } from "lucide-react";
+import { Activity, Ban, Edit3, KeyRound, Link2, MoreVertical, Plus, QrCode as QrIcon, RotateCcw, Search, Smartphone, Trash2, UserCheck, Wifi } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, qs } from "../../api/client";
-import type { Inbound, VpnUser } from "../../api/types";
+import type { Inbound, UserActivity, VpnUser } from "../../api/types";
 import { Card, Empty, ErrorText, Field, Modal, PageHeader, Spinner } from "../../components/ui";
 import { CopyButton, expiryText, GB, linkLabel, linkProtocol, QrCode, UsageBar, VpnStatusBadge } from "../../components/vpn";
 import { fmtRelative, fmtTime, fmtTraffic } from "../../lib/format";
@@ -185,7 +185,64 @@ export function ShareModal({ user, onClose }: { user: VpnUser; onClose: () => vo
   );
 }
 
-function RowMenu({ u, onEdit, onShare }: { u: VpnUser; onEdit: () => void; onShare: () => void }) {
+export function ActivityModal({ user, onClose }: { user: VpnUser; onClose: () => void }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["vpn-user-activity", user.id],
+    queryFn: () => api<UserActivity>(`/vpn/users/${user.id}/activity`),
+    refetchInterval: 10000,
+  });
+  return (
+    <Modal open onClose={onClose} title={`Activity — ${user.username}`} wide>
+      {isLoading || !data ? <Spinner /> : (
+        <div className="space-y-5">
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-ink-400">
+              <Wifi size={13} />Connected now
+              {data.connections.length > 0 && <span className="rounded-md bg-emerald-900/60 px-1.5 py-0.5 text-[11px] text-emerald-300">{new Set(data.connections.map((c) => c.ip)).size} IP</span>}
+            </div>
+            {data.connections.length === 0 ? (
+              <p className="text-sm text-ink-500">Not connected{data.last_online_at ? ` · last online ${fmtRelative(data.last_online_at)}` : ""}.</p>
+            ) : (
+              <table className="table">
+                <thead><tr><th>IP</th><th>Node</th><th>Last activity</th></tr></thead>
+                <tbody>
+                  {data.connections.map((c) => (
+                    <tr key={`${c.node}-${c.ip}`}>
+                      <td className="font-mono text-sm text-ink-100"><span className="inline-flex items-center gap-2"><span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />{c.ip}<CopyButton text={c.ip} label="" /></span></td>
+                      <td className="text-sm text-ink-300">{c.node}</td>
+                      <td className="text-xs text-ink-400">{fmtRelative(c.last_seen)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-ink-400"><Smartphone size={13} />Apps using the subscription</div>
+            {data.apps.length === 0 ? <p className="text-sm text-ink-500">The subscription link hasn't been added to an app yet.</p> : (
+              <table className="table">
+                <thead><tr><th>App</th><th>Last update</th><th>From IP</th><th>Updates</th></tr></thead>
+                <tbody>
+                  {data.apps.map((a) => (
+                    <tr key={a.user_agent}>
+                      <td><div className="text-sm font-medium text-ink-100">{a.app} {a.version && <span className="text-ink-400">{a.version}</span>}</div><div className="max-w-[260px] truncate font-mono text-[10px] text-ink-500" title={a.user_agent}>{a.user_agent || "—"}</div></td>
+                      <td className="whitespace-nowrap text-xs text-ink-400" title={fmtTime(a.last_at)}>{fmtRelative(a.last_at)}</td>
+                      <td className="font-mono text-xs text-ink-300">{a.last_ip}</td>
+                      <td className="text-sm text-ink-300">{a.fetches}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+          <p className="text-[11px] text-ink-500">Connected IPs come from Xray on each node and refresh every ~10 s. Apps are recorded when they update the subscription.</p>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function RowMenu({ u, onEdit, onShare, onActivity }: { u: VpnUser; onEdit: () => void; onShare: () => void; onActivity: () => void }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -212,6 +269,7 @@ function RowMenu({ u, onEdit, onShare }: { u: VpnUser; onEdit: () => void; onSha
       {open && (
         <div className="absolute right-0 z-30 mt-1 w-52 rounded-xl border border-ink-700 bg-ink-850 p-1 shadow-card">
           {item(<Link2 size={15} />, "Share / QR", onShare)}
+          {item(<Activity size={15} />, "Activity · IPs & apps", onActivity)}
           {item(<Edit3 size={15} />, "Edit", onEdit)}
           {item(<RotateCcw size={15} />, "Reset traffic", () => act.mutate({ path: `/vpn/users/${u.id}/reset-traffic` }))}
           {u.enabled
@@ -233,6 +291,7 @@ export default function VpnUsers() {
   const [status, setStatus] = useState<(typeof FILTERS)[number]>("");
   const [editing, setEditing] = useState<VpnUser | "new" | null>(null);
   const [sharing, setSharing] = useState<VpnUser | null>(null);
+  const [watching, setWatching] = useState<VpnUser | null>(null);
   const { data, isLoading } = useQuery({
     queryKey: ["vpn-users", search, status],
     queryFn: () => api<VpnUser[]>(`/vpn/users${qs({ search, status })}`),
@@ -279,14 +338,23 @@ export default function VpnUsers() {
                       <button className="text-left font-medium text-ink-100 hover:text-emerald-300" onClick={() => setSharing(u)}>{u.username}</button>
                       {u.note && <div className="max-w-[220px] truncate text-xs text-ink-500">{u.note}</div>}
                     </td>
-                    <td><VpnStatusBadge status={u.status} online={u.online} /></td>
+                    <td>
+                      <div className="flex items-center gap-1.5">
+                        <VpnStatusBadge status={u.status} online={u.online} />
+                        {u.online_ips > 0 && (
+                          <button onClick={() => setWatching(u)} className="badge bg-sky-600/20 text-sky-300 hover:bg-sky-600/30" title="Connected IPs">
+                            <Wifi size={11} />{u.online_ips} IP
+                          </button>
+                        )}
+                      </div>
+                    </td>
                     <td><UsageBar used={u.used} limit={u.data_limit} /><div className="mt-0.5 text-[10px] text-ink-500">↑ {fmtTraffic(u.used_up)} · ↓ {fmtTraffic(u.used_down)}</div></td>
                     <td className={`whitespace-nowrap text-sm ${exp.tone}`} title={u.expire_at ? fmtTime(u.expire_at) : ""}>{exp.text}</td>
                     <td className="whitespace-nowrap text-xs text-ink-400">{u.last_online_at ? fmtRelative(u.last_online_at) : "never"}</td>
                     <td className="whitespace-nowrap text-right">
                       <div className="flex items-center justify-end gap-1">
                         <CopyButton text={u.sub_url} label="Sub link" />
-                        {can("operator") && <RowMenu u={u} onEdit={() => setEditing(u)} onShare={() => setSharing(u)} />}
+                        {can("operator") && <RowMenu u={u} onEdit={() => setEditing(u)} onShare={() => setSharing(u)} onActivity={() => setWatching(u)} />}
                       </div>
                     </td>
                   </tr>
@@ -298,6 +366,7 @@ export default function VpnUsers() {
       </Card>
       {editing && <UserModal user={editing} inbounds={inbounds} onClose={() => setEditing(null)} />}
       {sharing && <ShareModal user={sharing} onClose={() => setSharing(null)} />}
+      {watching && <ActivityModal user={watching} onClose={() => setWatching(null)} />}
     </>
   );
 }

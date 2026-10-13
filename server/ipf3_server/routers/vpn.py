@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..db import get_session
 from ..deps import audit, require_admin, require_operator, require_viewer
 from ..models import Agent, User, VpnUser, VpnUserTrafficDaily, XrayInbound, XrayNodeState, XrayOutbound, XrayRoutingRule
-from ..services import usage, xray
+from ..services import clients, usage, xray
 from ..services.ratelimit import SlidingWindowLimiter
 from ..services.x25519 import generate_keypair
 from ..vpn_schemas import SS_2022, InboundIn, InboundOut, InboundUpdate, VpnUserIn, VpnUserOut, VpnUserUpdate
@@ -39,7 +39,7 @@ def _base_url(request: Request) -> str:
     return f"{proto}://{host}"
 
 
-def user_out(u: VpnUser, request: Request) -> VpnUserOut:
+def user_out(u: VpnUser, request: Request, ip_counts: dict[int, int] | None = None) -> VpnUserOut:
     now = _now()
     return VpnUserOut(
         id=u.id,
@@ -57,6 +57,7 @@ def user_out(u: VpnUser, request: Request) -> VpnUserOut:
         created_at=u.created_at,
         last_online_at=u.last_online_at,
         online=bool(u.last_online_at and now - u.last_online_at < ONLINE_WINDOW),
+        online_ips=(ip_counts or {}).get(u.id, 0),
         sub_token=u.sub_token,
         sub_url=f"{_base_url(request)}/sub/{u.sub_token}",
     )
@@ -261,7 +262,8 @@ async def list_users(
     q = select(VpnUser).order_by(VpnUser.id.desc())
     if search:
         q = q.where(VpnUser.username.ilike(f"%{search.replace('%', '')}%"))
-    rows = [user_out(u, request) for u in (await db.execute(q)).scalars()]
+    counts = await clients.online_ip_counts(db)
+    rows = [user_out(u, request, counts) for u in (await db.execute(q)).scalars()]
     if status:
         rows = [r for r in rows if r.status == status or (status == "online" and r.online)]
     return rows
@@ -371,6 +373,13 @@ async def user_links(user_id: int, _: User = Depends(require_viewer), db: AsyncS
     return {"links": xray.user_links(u, inbounds)}
 
 
+@router.get("/users/{user_id}/activity")
+async def user_activity(user_id: int, _: User = Depends(require_viewer), db: AsyncSession = Depends(get_session)):
+    """Connected IPs right now and the client apps that fetched the subscription."""
+    u = await _get_user(db, user_id)
+    return {"connections": await clients.user_connections(db, u.id), "apps": await clients.user_apps(db, u.id), "last_online_at": u.last_online_at}
+
+
 @router.get("/users/{user_id}/usage")
 async def user_usage(user_id: int, days: int = Query(30, ge=1, le=365), _: User = Depends(require_viewer), db: AsyncSession = Depends(get_session)):
     await _get_user(db, user_id)
@@ -461,6 +470,10 @@ async def subscription(
     accept = request.headers.get("accept", "")
     if format is None and "text/html" in accept and any(b in ua for b in _BROWSERS) and not any(c in ua for c in _CLIENT_HINTS):
         return RedirectResponse(f"/s/{token}", status_code=302)
+    from ..deps import client_ip
+
+    await clients.record_fetch(db, u, request.headers.get("user-agent", ""), client_ip(request))
+    await db.commit()
     inbounds = (await db.execute(select(XrayInbound))).scalars().all()
     active = u.status() == "active"
     fmt = format or ("clash" if any(c in ua for c in ("clash", "mihomo", "stash")) else "base64")
@@ -496,4 +509,7 @@ async def subscription_info(token: str, request: Request, db: AsyncSession = Dep
         "online": bool(u.last_online_at and _now() - u.last_online_at < ONLINE_WINDOW),
         "sub_url": f"{_base_url(request)}/sub/{u.sub_token}",
         "links": xray.user_links(u, inbounds) if status == "active" else [],
+        "connections": await clients.user_connections(db, u.id),
+        "apps": [{k: a[k] for k in ("app", "version", "last_at")} for a in await clients.user_apps(db, u.id)],
+        "last_online_at": u.last_online_at,
     }

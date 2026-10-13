@@ -354,6 +354,23 @@ class XrayInbound(Base):
         return f"in-{self.id}"
 
 
+class VpnUserApp(Base):
+    """A client app that fetched a user's subscription (one row per User-Agent)."""
+
+    __tablename__ = "vpn_user_apps"
+    __table_args__ = (UniqueConstraint("user_id", "user_agent", name="uq_vpn_user_apps_user_ua"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("vpn_users.id", ondelete="CASCADE"), index=True)
+    user_agent: Mapped[str] = mapped_column(String(256))
+    app: Mapped[str] = mapped_column(String(64))
+    version: Mapped[str] = mapped_column(String(32), default="")
+    last_ip: Mapped[str] = mapped_column(String(64), default="")
+    first_at: Mapped[datetime] = mapped_column(TS, default=utcnow)
+    last_at: Mapped[datetime] = mapped_column(TS, default=utcnow)
+    fetches: Mapped[int] = mapped_column(Integer, default=1)
+
+
 class XrayOutbound(Base):
     """An Xray outbound (upstream proxy) that routing rules can send traffic to."""
 
@@ -464,4 +481,6 @@ class XrayNodeState(Base):
     running: Mapped[bool] = mapped_column(Boolean, default=False)
     error: Mapped[str | None] = mapped_column(Text)
     online_users: Mapped[list] = mapped_column(JSONB, default=list)
+    # {"u12": {"203.0.113.7": <unix ts last seen>}} from Xray's online IP list.
+    online_ips: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
     updated_at: Mapped[datetime] = mapped_column(TS, default=utcnow)
