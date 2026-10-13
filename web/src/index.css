@@ -1,0 +1,41 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --surface: #17191c;
+  --grid: #2a2d33;
+  --axis: #8a8f99;
+  --series-1: #0ea271; /* emerald — receive / primary */
+  --series-2: #3987e5; /* blue — transmit / secondary */
+  --series-3: #d95926; /* orange — tertiary */
+  --good: #10b981;
+  --warning: #e0a526;
+  --critical: #ef5350;
+}
+
+html, body, #root { height: 100%; }
+body { background: #0f1012; }
+
+@layer components {
+  .card { @apply rounded-xl border border-ink-700/70 bg-ink-850 shadow-card; }
+  .card-header { @apply flex items-center justify-between gap-3 border-b border-ink-700/60 px-4 py-3; }
+  .card-title { @apply text-sm font-semibold tracking-wide text-ink-100; }
+  .btn { @apply inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70 disabled:cursor-not-allowed disabled:opacity-50; }
+  .btn-primary { @apply btn bg-emerald-600 text-white hover:bg-emerald-500; }
+  .btn-ghost { @apply btn border border-ink-700 bg-ink-800 text-ink-200 hover:border-ink-600 hover:bg-ink-750; }
+  .btn-danger { @apply btn border border-red-900/60 bg-red-950/40 text-red-300 hover:bg-red-900/40; }
+  .input { @apply w-full rounded-lg border border-ink-700 bg-ink-900 px-3 py-2 text-sm text-ink-100 placeholder:text-ink-500 focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600; }
+  .label { @apply mb-1 block text-xs font-medium uppercase tracking-wider text-ink-400; }
+  .table { @apply w-full text-left text-sm; }
+  .table th { @apply border-b border-ink-700 px-3 py-2 text-xs font-medium uppercase tracking-wider text-ink-400; }
+  .table td { @apply border-b border-ink-800 px-3 py-2 text-ink-200; }
+  .table tr:hover td { @apply bg-ink-800/60; }
+  .badge { @apply inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium; }
+  .mono { @apply font-mono text-[13px]; }
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #2a2d33; border-radius: 6px; border: 2px solid #0f1012; }
+::-webkit-scrollbar-track { background: transparent; }
