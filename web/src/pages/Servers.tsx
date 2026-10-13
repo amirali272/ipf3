@@ -58,7 +58,7 @@ function EnrollModal({ open, onClose }: { open: boolean; onClose: () => void }) 
             On the new server (Ubuntu 22.04/24.04), run the installer and choose <b className="text-ink-100">3 — Add this server to an existing panel</b>.
             When asked, enter <span className="mono text-emerald-300">{origin}</span> and the token above.
           </p>
-          <CopyBox text={`bash <(curl -fsSL https://raw.githubusercontent.com/amirali272/ipf3/claude/gracious-ramanujan-enb5r9/install.sh)`} />
+          <CopyBox text={`bash <(curl -fsSL https://raw.githubusercontent.com/amirali272/ipf3/claude/gracious-ramanujan-enb5r9/install.sh?$(date +%s))`} />
           <p className="text-sm text-ink-300">Or non-interactively, from a checkout of the repository:</p>
           <CopyBox text={`sudo ./deploy/install-agent.sh --server ${origin} --token ${created.token} --name $(hostname -s)`} />
           <p className="text-xs text-ink-400">Add <span className="mono">--iperf3-server</span> to also run an iperf3 endpoint on that host, and <span className="mono">--ca-file /path/ca.pem</span> if this panel uses a self-signed certificate.</p>

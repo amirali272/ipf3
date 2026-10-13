@@ -146,6 +146,13 @@ trap 'rc=$?; printf "\n   \e[38;5;203m✖ Unexpected error (exit %s) at line %s:
 [[ $EUID -eq 0 ]] || { echo "Please run as root:  sudo $0"; exit 1; }
 [[ -r /etc/os-release ]] && . /etc/os-release
 [[ "${ID:-}" == "ubuntu" ]] || { echo "Unknown Monitor supports Ubuntu 22.04 / 24.04 (found ${PRETTY_NAME:-unknown})."; exit 1; }
+# Only one installer at a time (a previous run may still be finishing in the background).
+exec 9>/run/unknown-monitor-install.lock
+if ! flock -n 9; then
+  echo "Another Unknown Monitor installation is still running on this server."
+  echo "Wait for it to finish (watch: tail -f $LOG), or stop it with: pkill -f deploy/install-"
+  exit 1
+fi
 : >"$LOG" 2>/dev/null || LOG=/tmp/unknown-monitor-install.log
 chmod 600 "$LOG"
 

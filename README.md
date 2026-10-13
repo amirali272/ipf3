@@ -62,7 +62,7 @@ and password, and timezone. The installer configures everything else, including 
 Let's Encrypt certificate when the domain points to the server.
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/amirali272/ipf3/claude/gracious-ramanujan-enb5r9/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/amirali272/ipf3/claude/gracious-ramanujan-enb5r9/install.sh?$(date +%s))
 ```
 
 Or from a checkout:

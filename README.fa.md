@@ -63,7 +63,7 @@ Unknown Monitor یک پلتفرم خودمیزبان (self-hosted) برای ما
 </div>
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/amirali272/ipf3/claude/gracious-ramanujan-enb5r9/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/amirali272/ipf3/claude/gracious-ramanujan-enb5r9/install.sh?$(date +%s))
 ```
 
 <div dir="rtl">
