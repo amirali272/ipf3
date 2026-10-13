@@ -283,3 +283,110 @@ export interface FleetPoint {
   rx_bytes: number | null;
   tx_bytes: number | null;
 }
+
+// ---------------------------------------------------------------- VPN
+export type VpnProtocol = "vless" | "vmess" | "trojan" | "shadowsocks";
+export type VpnNetwork = "tcp" | "ws" | "grpc" | "httpupgrade" | "xhttp";
+export type VpnSecurity = "none" | "tls" | "reality";
+export type VpnStatus = "active" | "expired" | "limited" | "disabled";
+
+export interface InboundSettings {
+  path: string;
+  host: string;
+  service_name: string;
+  xhttp_mode: "auto" | "packet-up" | "stream-up" | "stream-one";
+  flow: "" | "xtls-rprx-vision";
+  ss_method: string;
+  ss_server_password: string;
+  sni: string;
+  alpn: string[];
+  fingerprint: string;
+  cert_pem: string;
+  key_pem: string;
+  cert_file: string;
+  key_file: string;
+  target: string;
+  server_names: string[];
+  private_key: string;
+  public_key: string;
+  short_ids: string[];
+  spider_x: string;
+}
+
+export interface Inbound {
+  id: number;
+  agent_id: string;
+  agent_name: string | null;
+  remark: string;
+  protocol: VpnProtocol;
+  port: number;
+  listen: string;
+  network: VpnNetwork;
+  security: VpnSecurity;
+  address: string;
+  settings: InboundSettings;
+  enabled: boolean;
+  created_at: string;
+  tag: string;
+  users: number;
+}
+
+export interface VpnUser {
+  id: number;
+  username: string;
+  status: VpnStatus;
+  data_limit: number;
+  used_up: number;
+  used_down: number;
+  used: number;
+  lifetime_used: number;
+  expire_at: string | null;
+  enabled: boolean;
+  inbound_ids: number[] | null;
+  note: string;
+  created_at: string;
+  last_online_at: string | null;
+  online: boolean;
+  sub_token: string;
+  sub_url: string;
+}
+
+export interface VpnNode {
+  agent_id: string;
+  name: string;
+  online: boolean;
+  remote_addr: string | null;
+  xray_installed: boolean;
+  xray_version: string | null;
+  running: boolean;
+  error: string | null;
+  in_sync: boolean;
+  applied_at: string | null;
+  inbounds: number;
+  online_users: number;
+}
+
+export interface VpnOverview {
+  users_total: number;
+  users_by_status: Record<VpnStatus, number>;
+  users_online: number;
+  inbounds: number;
+  traffic: { today_up: number; today_down: number; month_up: number; month_down: number };
+  daily: { day: string; up: number; down: number }[];
+  top_users: { id: number; username: string; used: number; data_limit: number }[];
+  expiring_soon: { id: number; username: string; expire_at: string }[];
+  timezone: string;
+}
+
+export interface SubInfo {
+  username: string;
+  status: VpnStatus;
+  used_up: number;
+  used_down: number;
+  used: number;
+  data_limit: number;
+  expire_at: string | null;
+  online: boolean;
+  sub_url: string;
+  links: string[];
+}

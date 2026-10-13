@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ipf3-server"
-version = "1.2.0"
+version = "2.0.0"
 description = "IPF3 network monitoring and performance testing control plane"
 requires-python = ">=3.10"
 dependencies = [
@@ -22,7 +22,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=8", "pytest-asyncio>=0.23"]
+test = ["pytest>=8", "pytest-asyncio>=0.23", "pyyaml>=6", "httpx[socks]>=0.27"]
 
 [project.scripts]
 ipf3-server = "ipf3_server.cli:main"

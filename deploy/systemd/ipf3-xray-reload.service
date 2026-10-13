@@ -1,0 +1,8 @@
+[Unit]
+Description=Apply a new Xray configuration
+StartLimitIntervalSec=60
+StartLimitBurst=20
+
+[Service]
+Type=oneshot
+ExecStart=/bin/systemctl restart ipf3-xray.service

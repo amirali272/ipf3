@@ -1,0 +1,9 @@
+[Unit]
+Description=Restart Xray when the panel pushes a new configuration
+
+[Path]
+PathChanged=/etc/ipf3/xray/config.json
+Unit=ipf3-xray-reload.service
+
+[Install]
+WantedBy=multi-user.target

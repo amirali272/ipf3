@@ -16,6 +16,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -323,3 +324,94 @@ class AuditLog(Base):
     target: Mapped[str] = mapped_column(String(255), default="")
     details: Mapped[dict] = mapped_column(JSONB, default=dict)
     ip: Mapped[str | None] = mapped_column(String(64))
+
+
+# ============================================================================ VPN (Xray)
+class XrayInbound(Base):
+    """An Xray inbound running on a node (an enrolled agent with Xray installed)."""
+
+    __tablename__ = "xray_inbounds"
+    __table_args__ = (UniqueConstraint("agent_id", "port", name="uq_xray_inbounds_agent_port"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    agent_id: Mapped[str] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"))
+    remark: Mapped[str] = mapped_column(String(128))
+    protocol: Mapped[str] = mapped_column(String(16))  # vless | vmess | trojan | shadowsocks
+    port: Mapped[int] = mapped_column(Integer)
+    listen: Mapped[str] = mapped_column(String(64), default="")
+    network: Mapped[str] = mapped_column(String(16), default="tcp")  # tcp | ws | grpc | httpupgrade | xhttp
+    security: Mapped[str] = mapped_column(String(16), default="none")  # none | tls | reality
+    # Host clients connect to (domain or IP of the node).
+    address: Mapped[str] = mapped_column(String(255))
+    settings: Mapped[dict] = mapped_column(JSONB, default=dict)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(TS, default=utcnow)
+
+    @property
+    def tag(self) -> str:
+        return f"in-{self.id}"
+
+
+class VpnUser(Base):
+    __tablename__ = "vpn_users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    username: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    uuid: Mapped[str] = mapped_column(String(36), default=new_uuid)
+    password: Mapped[str] = mapped_column(String(64))  # trojan / shadowsocks secret
+    sub_token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    data_limit: Mapped[int] = mapped_column(BigInteger, default=0)  # bytes; 0 = unlimited
+    used_up: Mapped[int] = mapped_column(BigInteger, default=0)
+    used_down: Mapped[int] = mapped_column(BigInteger, default=0)
+    lifetime_used: Mapped[int] = mapped_column(BigInteger, default=0)
+    expire_at: Mapped[datetime | None] = mapped_column(TS)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # None = every enabled inbound; otherwise a list of inbound ids.
+    inbound_ids: Mapped[list | None] = mapped_column(JSONB)
+    note: Mapped[str] = mapped_column(String(500), default="")
+    created_at: Mapped[datetime] = mapped_column(TS, default=utcnow)
+    last_online_at: Mapped[datetime | None] = mapped_column(TS)
+    traffic_reset_at: Mapped[datetime | None] = mapped_column(TS)
+
+    @property
+    def email(self) -> str:
+        """Stable identifier used inside Xray configs and statistics."""
+        return f"u{self.id}"
+
+    @property
+    def used(self) -> int:
+        return (self.used_up or 0) + (self.used_down or 0)
+
+    def status(self, now: datetime | None = None) -> str:
+        now = now or utcnow()
+        if not self.enabled:
+            return "disabled"
+        if self.expire_at is not None and self.expire_at <= now:
+            return "expired"
+        if self.data_limit and self.used >= self.data_limit:
+            return "limited"
+        return "active"
+
+
+class VpnUserTrafficDaily(Base):
+    __tablename__ = "vpn_user_traffic_daily"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("vpn_users.id", ondelete="CASCADE"), primary_key=True)
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    up: Mapped[int] = mapped_column(BigInteger, default=0)
+    down: Mapped[int] = mapped_column(BigInteger, default=0)
+
+
+class XrayNodeState(Base):
+    """What each node last reported about its Xray process."""
+
+    __tablename__ = "xray_node_state"
+
+    agent_id: Mapped[str] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"), primary_key=True)
+    applied_hash: Mapped[str | None] = mapped_column(String(64))
+    applied_at: Mapped[datetime | None] = mapped_column(TS)
+    xray_version: Mapped[str | None] = mapped_column(String(64))
+    running: Mapped[bool] = mapped_column(Boolean, default=False)
+    error: Mapped[str | None] = mapped_column(Text)
+    online_users: Mapped[list] = mapped_column(JSONB, default=list)
+    updated_at: Mapped[datetime] = mapped_column(TS, default=utcnow)

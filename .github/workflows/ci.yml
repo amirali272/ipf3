@@ -34,11 +34,14 @@ jobs:
           sudo apt-get update -q && echo "iperf3 iperf3/start_daemon boolean false" | sudo debconf-set-selections
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q iperf3 iputils-ping
           pip install -r requirements.lock -r ../agent/requirements.lock
-          pip install --no-deps -e . -e ../agent && pip install pytest pytest-asyncio
+          pip install --no-deps -e . -e ../agent && pip install pytest pytest-asyncio pyyaml "httpx[socks]"
+          curl -fsSL -o /tmp/xray.zip https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip
+          mkdir -p /tmp/xray && unzip -q /tmp/xray.zip -d /tmp/xray
       - name: Test
         working-directory: server
         env:
           IPF3_TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/ipf3_test
+          XRAY_BIN: /tmp/xray/xray
         run: pytest -q
 
   agent:

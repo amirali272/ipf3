@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import Layout from "./components/Layout";
 import { Spinner } from "./components/ui";
 import { useAuth } from "./lib/auth";
@@ -15,15 +15,30 @@ import Servers from "./pages/Servers";
 import Tests from "./pages/Tests";
 import UsersPage from "./pages/Users";
 import Usage from "./pages/Usage";
+import Subscription from "./pages/Subscription";
+import VpnInbounds from "./pages/vpn/Inbounds";
+import VpnOverviewPage from "./pages/vpn/Overview";
+import VpnUsers from "./pages/vpn/Users";
 
 export default function App() {
   const { user, loading, can } = useAuth();
+  const location = useLocation();
+  if (location.pathname.startsWith("/s/")) {
+    return (
+      <Routes>
+        <Route path="/s/:token" element={<Subscription />} />
+      </Routes>
+    );
+  }
   if (loading) return <Spinner label="Connecting…" />;
   if (!user) return <Login />;
   return (
     <Routes>
       <Route element={<Layout />}>
-        <Route index element={<Dashboard />} />
+        <Route index element={<VpnOverviewPage />} />
+        <Route path="vpn/users" element={<VpnUsers />} />
+        <Route path="vpn/inbounds" element={<VpnInbounds />} />
+        <Route path="monitoring" element={<Dashboard />} />
         <Route path="servers" element={<Servers />} />
         <Route path="servers/:id" element={<ServerDetail />} />
         <Route path="usage" element={<Usage />} />

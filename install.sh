@@ -234,6 +234,8 @@ ask_agent_common() {
     [[ "$AGENT_NAME" =~ ^[A-Za-z0-9_.@-]{1,128}$ ]] && break
     warn "Letters, digits and . _ @ - only."
   done
+  XRAY=0
+  if confirm "Use this server as a VPN node (install Xray-core)?" y; then XRAY=1; fi
   IPERF=0
   if confirm "Also run an iperf3 endpoint here (for speed tests from other servers)?" n; then IPERF=1; fi
 }
@@ -277,6 +279,7 @@ install_panel() {
 install_agent() { # uses PANEL_URL, TOKEN, AGENT_NAME, IPERF, CA_FILE
   local args=(--server "$PANEL_URL" --token "$TOKEN" --name "$AGENT_NAME")
   [[ $IPERF -eq 1 ]] && args+=(--iperf3-server)
+  [[ ${XRAY:-0} -eq 1 ]] && args+=(--xray)
   [[ -n "${CA_FILE:-}" ]] && args+=(--ca-file "$CA_FILE")
   [[ -f /etc/ipf3/agent.json ]] && args+=(--reenroll)
   run_step "Installing monitoring agent" "$REPO/deploy/install-agent.sh" "${args[@]}"
@@ -307,7 +310,10 @@ case "$MODE" in
       echo "Admin        $ADMIN_USER"
       echo "Timezone     $TIMEZONE"
       if [[ "$MODE" == 1 ]]; then
-        if [[ $IPERF -eq 1 ]]; then echo "Agent        $AGENT_NAME + iperf3 endpoint"; else echo "Agent        $AGENT_NAME"; fi
+        extras=""
+        [[ $XRAY -eq 1 ]] && extras+=" + VPN (Xray)"
+        [[ $IPERF -eq 1 ]] && extras+=" + iperf3"
+        echo "This server  $AGENT_NAME$extras"
       fi
     } | summary_box
     confirm "Start installation?" y || fail "Aborted."
@@ -332,6 +338,11 @@ case "$MODE" in
         echo ""; echo "Certificate fingerprint (SHA-256):"; echo "${FP:0:47}"; echo "${FP:48}"
       fi
       echo ""
+      if [[ ${XRAY:-0} -eq 1 ]]; then
+        echo "VPN: open VPN → Inbounds, add an inbound on this server"
+        echo "     (port 443 is used by the panel here: pick e.g. 8443)."
+        echo ""
+      fi
       echo "Add more servers: run this installer on each server and"
       echo "choose \"Add this server to an existing panel\"."
       echo "Get a token in the panel: Servers → Enroll server."
@@ -372,7 +383,18 @@ case "$MODE" in
     fi
     found=0
     if [[ -f /etc/ipf3/server.env ]]; then found=1; run_step "Upgrading panel (backup is taken first)" "$REPO/deploy/upgrade-server.sh"; fi
-    if [[ -f /etc/ipf3/agent.json ]]; then found=1; run_step "Upgrading agent" "$REPO/deploy/upgrade-agent.sh"; fi
+    if [[ -f /etc/ipf3/agent.json ]]; then
+      found=1
+      run_step "Upgrading agent" "$REPO/deploy/upgrade-agent.sh"
+      if [[ ! -x /usr/local/bin/xray ]]; then
+        if confirm "Turn this server into a VPN node (install Xray-core)?" y; then
+          run_step "Installing Xray-core" "$REPO/deploy/install-xray.sh"
+          run_step "Restarting agent" systemctl restart ipf3-agent.service
+        fi
+      elif confirm "Update Xray-core to the latest release?" n; then
+        run_step "Updating Xray-core" "$REPO/deploy/install-xray.sh"
+      fi
+    fi
     [[ $found -eq 1 ]] || fail "No existing installation found on this server."
     printf '\n'; ok "Upgraded to version $VERSION"
     ;;

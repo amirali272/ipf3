@@ -7,7 +7,7 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,6 +23,10 @@ from ..models import (
     LiveRate,
     MetricSample,
     TrafficDaily,
+    VpnUser,
+    VpnUserTrafficDaily,
+    XrayInbound,
+    XrayNodeState,
 )
 from ..schemas import (
     AgentJobOut,
@@ -37,7 +41,9 @@ from ..schemas import (
 from ..security import hash_token, random_token
 from ..services.parsers import ParseError, parse_job
 from ..services.ratelimit import enroll_limiter
+from ..services import xray as xray_svc
 from ..services.usage import usage_day
+from ..vpn_schemas import API_PORT, XrayStateIn, XrayStatsIn
 
 router = APIRouter(prefix="/agent/v1", tags=["agent"])
 
@@ -261,4 +267,78 @@ async def job_result(
     job.loss_percent = parsed.loss_percent
     job.jitter_ms = parsed.jitter_ms
     job.retransmits = parsed.retransmits
+    await db.commit()
+
+
+# ============================================================================ Xray (VPN)
+@router.get("/xray/config")
+async def xray_config(
+    hash: str | None = Query(None, max_length=64),
+    agent: Agent = Depends(current_agent),
+    db: AsyncSession = Depends(get_session),
+):
+    """Desired Xray config for this node. 204 when the agent already has it."""
+    from fastapi import Response
+
+    inbounds = (await db.execute(select(XrayInbound).where(XrayInbound.agent_id == agent.id))).scalars().all()
+    users = (await db.execute(select(VpnUser))).scalars().all()
+    cfg = xray_svc.build_config(inbounds, users)
+    h = xray_svc.config_hash(cfg)
+    await db.commit()  # persist last_seen_at
+    if hash == h:
+        return Response(status_code=204)
+    return {"hash": h, "api_port": API_PORT, "config": cfg}
+
+
+@router.post("/xray/state", status_code=204)
+async def xray_state(body: XrayStateIn, agent: Agent = Depends(current_agent), db: AsyncSession = Depends(get_session)):
+    now = datetime.now(timezone.utc)
+    values = {
+        "xray_version": body.version,
+        "running": body.running,
+        "error": body.error,
+        "online_users": body.online_users,
+        "updated_at": now,
+    }
+    if body.applied_hash:
+        values["applied_hash"] = body.applied_hash
+        values["applied_at"] = now
+    stmt = pg_insert(XrayNodeState).values(agent_id=agent.id, **values)
+    stmt = stmt.on_conflict_do_update(index_elements=[XrayNodeState.agent_id], set_=values)
+    await db.execute(stmt)
+    if body.online_users:
+        ids = [int(e[1:]) for e in body.online_users if e.startswith("u") and e[1:].isdigit()]
+        if ids:
+            await db.execute(update(VpnUser).where(VpnUser.id.in_(ids)).values(last_online_at=now))
+    await db.commit()
+
+
+@router.post("/xray/stats", status_code=204)
+async def xray_stats(body: XrayStatsIn, agent: Agent = Depends(current_agent), db: AsyncSession = Depends(get_session)):
+    """Per-user traffic deltas (bytes) read from Xray's StatsService with reset."""
+    now = datetime.now(timezone.utc)
+    day = usage_day(now)
+    deltas = {}
+    for email, t in body.users.items():
+        if email.startswith("u") and email[1:].isdigit() and (t.up or t.down):
+            deltas[int(email[1:])] = t
+    if not deltas:
+        await db.commit()
+        return
+    users = (await db.execute(select(VpnUser).where(VpnUser.id.in_(list(deltas))).with_for_update())).scalars().all()
+    rows = []
+    for u in users:
+        t = deltas[u.id]
+        u.used_up += t.up
+        u.used_down += t.down
+        u.lifetime_used += t.up + t.down
+        u.last_online_at = now
+        rows.append({"user_id": u.id, "day": day, "up": t.up, "down": t.down})
+    if rows:
+        stmt = pg_insert(VpnUserTrafficDaily).values(rows)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[VpnUserTrafficDaily.user_id, VpnUserTrafficDaily.day],
+            set_={"up": VpnUserTrafficDaily.up + stmt.excluded.up, "down": VpnUserTrafficDaily.down + stmt.excluded.down},
+        )
+        await db.execute(stmt)
     await db.commit()

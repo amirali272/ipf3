@@ -40,6 +40,8 @@ RemoveIPC=yes
 SystemCallArchitectures=native
 SystemCallFilter=@system-service
 ReadOnlyPaths=/
+# The agent writes the Xray config it receives from the panel (VPN nodes only).
+ReadWritePaths=-/etc/ipf3/xray
 InaccessiblePaths=-/root -/var/lib/postgresql -/etc/ssh -/etc/shadow -/etc/gshadow
 LimitNOFILE=8192
 TasksMax=128

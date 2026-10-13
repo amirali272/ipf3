@@ -1,4 +1,5 @@
 import {
+  Activity,
   BarChart3,
   Bell,
   CalendarClock,
@@ -7,13 +8,17 @@ import {
   HardDriveDownload,
   LogOut,
   Menu,
+  Network,
   ScrollText,
   Search,
   Server,
   Settings,
+  ShieldCheck,
   Users,
   Zap,
 } from "lucide-react";
+
+type NavItem = { to: string; label: string; icon: typeof Gauge; end?: boolean; badge?: number; tone?: "green" | "red" };
 import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -197,22 +202,35 @@ export default function Layout() {
   const { data: status } = useQuery({ queryKey: ["system-status"], queryFn: () => api<SystemStatus>("/system/status"), refetchInterval: 15000 });
   const firing = Object.values(overview?.alerts_firing ?? {}).reduce((a, b) => a + (b ?? 0), 0);
 
-  const NAV = [
-    { to: "/", label: "Dashboard", icon: Gauge, end: true },
-    { to: "/servers", label: "Servers", icon: Server, badge: overview?.agents_total || undefined, tone: "green" as const },
-    { to: "/usage", label: "Traffic Usage", icon: HardDriveDownload },
-    { to: "/tests", label: "Speed & Diagnostics", icon: Zap },
-    { to: "/schedules", label: "Schedules", icon: CalendarClock },
-    { to: "/analytics", label: "Analytics", icon: BarChart3 },
-    { to: "/alerts", label: "Alerts", icon: Bell, badge: firing || undefined, tone: "red" as const },
+  const SECTIONS: { title: string; items: NavItem[] }[] = [
+    {
+      title: "VPN",
+      items: [
+        { to: "/", label: "Overview", icon: Gauge, end: true },
+        { to: "/vpn/users", label: "Users", icon: Users },
+        { to: "/vpn/inbounds", label: "Inbounds & nodes", icon: Network },
+      ],
+    },
+    {
+      title: "Monitoring",
+      items: [
+        { to: "/monitoring", label: "Dashboard", icon: Activity },
+        { to: "/servers", label: "Servers", icon: Server, badge: overview?.agents_total || undefined, tone: "green" },
+        { to: "/usage", label: "Traffic Usage", icon: HardDriveDownload },
+        { to: "/tests", label: "Speed & Diagnostics", icon: Zap },
+        { to: "/schedules", label: "Schedules", icon: CalendarClock },
+        { to: "/analytics", label: "Analytics", icon: BarChart3 },
+        { to: "/alerts", label: "Alerts", icon: Bell, badge: firing || undefined, tone: "red" },
+      ],
+    },
   ];
-  const ADMIN_NAV = [
-    { to: "/users", label: "Users", icon: Users },
+  const ADMIN_NAV: NavItem[] = [
+    { to: "/users", label: "Panel admins", icon: ShieldCheck },
     { to: "/audit", label: "Audit log", icon: ScrollText },
     { to: "/account", label: "Settings", icon: Settings },
   ];
 
-  const link = (item: { to: string; label: string; icon: typeof Gauge; end?: boolean; badge?: number; tone?: "green" | "red" }) => (
+  const link = (item: NavItem) => (
     <NavLink
       key={item.to}
       to={item.to}
@@ -248,7 +266,12 @@ export default function Layout() {
           <Brand />
         </div>
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-          {NAV.map(link)}
+          {SECTIONS.map((sec, i) => (
+            <div key={sec.title}>
+              <div className={`px-3 pb-1 ${i ? "pt-6" : "pt-1"} text-[11px] font-semibold uppercase tracking-wider text-ink-500`}>{sec.title}</div>
+              <div className="space-y-1">{sec.items.map(link)}</div>
+            </div>
+          ))}
           {can("admin") && (
             <>
               <div className="px-3 pb-1 pt-6 text-[11px] font-semibold uppercase tracking-wider text-ink-500">Administration</div>

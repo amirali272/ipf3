@@ -41,6 +41,7 @@ ask_yn() { # ask_yn "question" default
 }
 
 HAS_PANEL=0; HAS_AGENT=0
+[[ -x /usr/local/bin/xray && -d /etc/ipf3/xray ]] && HAS_AGENT=1
 [[ -f /etc/ipf3/server.env || -d /opt/ipf3 || -f /etc/systemd/system/ipf3-api.service ]] && HAS_PANEL=1
 [[ -f /etc/ipf3/agent.json || -d /opt/ipf3-agent || -f /etc/systemd/system/ipf3-agent.service ]] && HAS_AGENT=1
 if [[ $HAS_PANEL -eq 0 && $HAS_AGENT -eq 0 ]]; then
@@ -78,7 +79,8 @@ REMOVE_BACKUPS="${REMOVE_BACKUPS:-0}"
 REMOVE_PACKAGES="${REMOVE_PACKAGES:-0}"
 
 # --- services ---------------------------------------------------------------
-UNITS=(ipf3-api.service ipf3-worker.service ipf3-backup.timer ipf3-backup.service ipf3-agent.service ipf3-iperf3.service)
+UNITS=(ipf3-api.service ipf3-worker.service ipf3-backup.timer ipf3-backup.service ipf3-agent.service ipf3-iperf3.service
+       ipf3-xray-config.path ipf3-xray-reload.service ipf3-xray.service)
 for u in "${UNITS[@]}"; do
   systemctl disable --now "$u" >/dev/null 2>&1 || true
   rm -f "/etc/systemd/system/$u"
@@ -112,6 +114,11 @@ rm -f /etc/letsencrypt/renewal-hooks/deploy/ipf3-nginx.sh
 
 # --- files ----------------------------------------------------------------------
 rm -rf /opt/ipf3 /opt/ipf3-agent /opt/unknown-monitor /etc/ipf3 /run/ipf3-install.result
+if [[ -x /usr/local/bin/xray ]]; then
+  rm -f /usr/local/bin/xray
+  rm -rf /usr/local/share/xray
+  step "Xray-core removed"
+fi
 rm -f /var/log/unknown-monitor-install.log
 step "Application files, configuration and secrets removed"
 
@@ -123,7 +130,7 @@ elif [[ -d /var/backups/ipf3 ]]; then
 fi
 
 # --- accounts -------------------------------------------------------------------
-for u in ipf3 ipf3-agent; do
+for u in ipf3 ipf3-agent ipf3-xray; do
   if id -u "$u" >/dev/null 2>&1; then userdel "$u" >/dev/null 2>&1 || true; fi
   getent group "$u" >/dev/null && groupdel "$u" >/dev/null 2>&1 || true
 done

@@ -12,6 +12,7 @@ import httpx
 from . import __version__
 from .collect import MetricsCollector, NetRateMeter, host_inventory, system_info
 from .config import AgentConfig
+from . import xray
 from .tools import JobError, execute
 
 log = logging.getLogger("ipf3.agent")
@@ -59,6 +60,9 @@ class Agent:
         # Bandwidth tests run one at a time so they do not distort each other.
         self.iperf_lock = asyncio.Lock()
         self.tasks: set[asyncio.Task] = set()
+        self.xray_traffic = xray.TrafficCounter()
+        self.xray_api_port = 10085
+        self.xray_error: str | None = None
 
     async def _request(self, method: str, url: str, **kw) -> httpx.Response:
         r = await self.client.request(method, url, **kw)
@@ -102,6 +106,44 @@ class Agent:
         if rates is None:
             return
         await self._request("POST", "/live", json={"interfaces": rates})
+
+    async def xray_sync(self) -> None:
+        """Pull the desired Xray config, apply it if changed, push traffic and state."""
+        if not xray.installed():
+            return
+        have = xray.current_hash()
+        r = await self._request("GET", "/xray/config", params={"hash": have} if have else None)
+        applied = None
+        if r.status_code == 200:
+            body = r.json()
+            self.xray_api_port = int(body.get("api_port", 10085))
+            err = await xray.apply(body["config"], body["hash"])
+            self.xray_error = err
+            if err is None:
+                applied = body["hash"]
+                log.info("applied new Xray config %s", body["hash"][:12])
+            else:
+                log.warning("Xray rejected the new config: %s", err)
+        stats = await xray.query_stats(self.xray_api_port)
+        self.xray_traffic.add(stats)
+        pending = self.xray_traffic.take()
+        if pending:
+            try:
+                await self._request("POST", "/xray/stats", json={"users": pending})
+            except BaseException:
+                self.xray_traffic.restore(pending)
+                raise
+        await self._request(
+            "POST",
+            "/xray/state",
+            json={
+                "applied_hash": applied or xray.current_hash(),
+                "version": await xray.version(),
+                "running": await xray.is_running(),
+                "error": self.xray_error,
+                "online_users": await xray.online_users(self.xray_api_port),
+            },
+        )
 
     async def send_inventory(self) -> None:
         inv = await asyncio.to_thread(host_inventory, self.cfg.max_connections_reported)
@@ -167,6 +209,7 @@ class Agent:
         runners = [
             asyncio.create_task(self._periodic("metrics", self.cfg.metrics_interval, self.send_metrics)),
             asyncio.create_task(self._periodic("live", self.cfg.live_interval, self.send_live)),
+            asyncio.create_task(self._periodic("xray", 10.0, self.xray_sync)),
             asyncio.create_task(self._periodic("inventory", self.cfg.inventory_interval, self.send_inventory)),
             asyncio.create_task(self._periodic("heartbeat", self.cfg.heartbeat_interval, self.send_heartbeat)),
             asyncio.create_task(self.poll_jobs()),

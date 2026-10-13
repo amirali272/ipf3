@@ -67,6 +67,11 @@ server {
         include /etc/nginx/snippets/ipf3-proxy.conf;
     }
     location = /healthz { include /etc/nginx/snippets/ipf3-proxy.conf; }
+    # VPN subscription links (public, token protected, rate limited).
+    location /sub/ {
+        limit_req zone=ipf3_api burst=20 nodelay;
+        include /etc/nginx/snippets/ipf3-proxy.conf;
+    }
 
     location /assets/ {
         expires 1y;

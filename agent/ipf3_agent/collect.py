@@ -87,7 +87,14 @@ def detect_tools() -> dict[str, bool]:
         "dns": True,  # dnspython
         "ip": shutil.which("ip") is not None,
         "ss": shutil.which("ss") is not None,
+        "xray": _xray_installed(),
     }
+
+
+def _xray_installed() -> bool:
+    from . import xray
+
+    return xray.installed()
 
 
 def system_info(name: str = "") -> dict:
