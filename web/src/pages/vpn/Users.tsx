@@ -39,7 +39,7 @@ function toForm(u?: VpnUser): FormState {
   };
 }
 
-function UserModal({ user, inbounds, onClose }: { user: VpnUser | "new"; inbounds: Inbound[]; onClose: () => void }) {
+export function UserModal({ user, inbounds, onClose }: { user: VpnUser | "new"; inbounds: Inbound[]; onClose: () => void }) {
   const qc = useQueryClient();
   const isNew = user === "new";
   const [f, setF] = useState<FormState>(toForm(isNew ? undefined : user));

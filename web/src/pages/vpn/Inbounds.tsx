@@ -1,11 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, Edit3, KeyRound, Plus, RefreshCw, Server, Sparkles, Trash2, XCircle } from "lucide-react";
+import { Activity, AlertTriangle, CheckCircle2, Copy, Edit3, KeyRound, Lock, Plus, Server, ShieldCheck, Sparkles, Trash2, Users, Wifi, Zap } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api/client";
 import type { Inbound, InboundSettings, VpnNetwork, VpnNode, VpnProtocol, VpnSecurity } from "../../api/types";
-import { Card, Empty, ErrorText, Field, Modal, PageHeader } from "../../components/ui";
-import { fmtRelative } from "../../lib/format";
+import { Card, Empty, ErrorText, Field, Modal } from "../../components/ui";
+import { fmtRelative, fmtTraffic } from "../../lib/format";
 import { useAuth } from "../../lib/auth";
 
 const DEFAULT_SETTINGS: InboundSettings = {
@@ -92,15 +92,17 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-function InboundModal({ inbound, nodes, onClose }: { inbound: Inbound | "new"; nodes: VpnNode[]; onClose: () => void }) {
+function InboundModal({ inbound, nodes, onClose, preset }: { inbound: Inbound | "new"; nodes: VpnNode[]; onClose: () => void; preset?: string }) {
   const qc = useQueryClient();
   const isNew = inbound === "new";
   const firstNode = nodes.find((n) => n.xray_installed) ?? nodes[0];
-  const [d, setD] = useState<Draft>(() =>
-    isNew
+  const [d, setD] = useState<Draft>(() => {
+    const base: Draft = isNew
       ? { agent_id: firstNode?.agent_id ?? "", remark: "", protocol: "vless", port: 8443, listen: "", network: "tcp", security: "reality", address: firstNode?.remote_addr && !/^(127\.|10\.|192\.168\.)/.test(firstNode.remote_addr) ? firstNode.remote_addr : window.location.hostname, settings: { ...DEFAULT_SETTINGS, flow: "xtls-rprx-vision" }, enabled: true }
-      : { agent_id: inbound.agent_id, remark: inbound.remark, protocol: inbound.protocol, port: inbound.port, listen: inbound.listen, network: inbound.network, security: inbound.security, address: inbound.address, settings: { ...DEFAULT_SETTINGS, ...inbound.settings }, enabled: inbound.enabled },
-  );
+      : { agent_id: inbound.agent_id, remark: inbound.remark, protocol: inbound.protocol, port: inbound.port, listen: inbound.listen, network: inbound.network, security: inbound.security, address: inbound.address, settings: { ...DEFAULT_SETTINGS, ...inbound.settings }, enabled: inbound.enabled };
+    const pr = PRESETS.find((x) => x.id === preset);
+    return pr && isNew ? pr.apply(base) : base;
+  });
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setD((s) => ({ ...s, [k]: v }));
   const setS = <K extends keyof InboundSettings>(k: K, v: InboundSettings[K]) => setD((s) => ({ ...s, settings: { ...s.settings, [k]: v } }));
 
@@ -300,34 +302,134 @@ function InboundModal({ inbound, nodes, onClose }: { inbound: Inbound | "new"; n
   );
 }
 
+const PROTO_STYLE: Record<string, { grad: string; ring: string; text: string; label: string }> = {
+  vless: { grad: "from-emerald-500 to-emerald-700", ring: "ring-emerald-500/40", text: "text-emerald-300", label: "VLESS" },
+  vmess: { grad: "from-violet-500 to-violet-700", ring: "ring-violet-500/40", text: "text-violet-300", label: "VMess" },
+  trojan: { grad: "from-orange-500 to-orange-700", ring: "ring-orange-500/40", text: "text-orange-300", label: "Trojan" },
+  shadowsocks: { grad: "from-sky-500 to-sky-700", ring: "ring-sky-500/40", text: "text-sky-300", label: "SS" },
+};
+
+function Chip({ children, tone = "neutral", icon }: { children: ReactNode; tone?: "neutral" | "green" | "amber"; icon?: ReactNode }) {
+  const cls = { neutral: "border-ink-600 bg-ink-800 text-ink-200", green: "border-emerald-700/60 bg-emerald-950/40 text-emerald-300", amber: "border-amber-700/50 bg-amber-950/30 text-amber-300" }[tone];
+  return <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${cls}`}>{icon}{children}</span>;
+}
+
+function Switch({ on, onChange, disabled }: { on: boolean; onChange: () => void; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onChange}
+      aria-pressed={on}
+      className={`relative h-6 w-11 shrink-0 rounded-full transition disabled:opacity-40 ${on ? "bg-emerald-600 shadow-[0_0_12px_rgba(16,185,129,0.45)]" : "bg-ink-700"}`}
+    >
+      <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${on ? "left-[22px]" : "left-0.5"}`} />
+    </button>
+  );
+}
+
+function InboundCard({ i, canEdit, onEdit, onDelete, onToggle }: { i: Inbound; canEdit: boolean; onEdit: () => void; onDelete: () => void; onToggle: () => void }) {
+  const st = PROTO_STYLE[i.protocol];
+  const total = (i.up ?? 0) + (i.down ?? 0);
+  const deprecated = DEPRECATED[i.protocol] || (i.protocol !== "shadowsocks" ? DEPRECATED[i.network] : undefined);
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className={`group relative overflow-hidden rounded-2xl border bg-gradient-to-br from-ink-800/80 to-ink-850 p-5 shadow-card transition ${i.enabled ? "border-ink-700/70 hover:border-emerald-700/60" : "border-ink-800 opacity-60"}`}>
+      <div className={`pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-gradient-to-br ${st.grad} opacity-[0.12] blur-2xl`} />
+      <div className="relative flex items-start gap-4">
+        <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${st.grad} text-xs font-black tracking-wide text-white shadow-lg ring-4 ${st.ring}`}>
+          {st.label}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-lg font-semibold text-ink-100">{i.remark}</div>
+          <div className="mt-0.5 flex items-center gap-1.5 text-xs text-ink-400"><Server size={12} />{i.agent_name}</div>
+        </div>
+        <Switch on={i.enabled} onChange={onToggle} disabled={!canEdit} />
+      </div>
+
+      <div className="relative mt-4 flex flex-wrap items-center gap-1.5">
+        {i.protocol !== "shadowsocks" && <Chip>{i.network}</Chip>}
+        {i.security === "reality" && <Chip tone="green" icon={<ShieldCheck size={11} />}>Reality</Chip>}
+        {i.security === "tls" && <Chip tone="green" icon={<Lock size={11} />}>TLS</Chip>}
+        {i.security === "none" && i.protocol !== "shadowsocks" && <Chip>no tls</Chip>}
+        {i.settings.flow && <Chip tone="green" icon={<Zap size={11} />}>Vision</Chip>}
+        {i.protocol === "shadowsocks" && <Chip>{i.settings.ss_method.replace("2022-blake3-", "2022 ")}</Chip>}
+        {deprecated && <Chip tone="amber" icon={<AlertTriangle size={11} />}>legacy</Chip>}
+      </div>
+
+      <button
+        onClick={() => navigator.clipboard.writeText(`${i.address}:${i.port}`).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1200); })}
+        className="relative mt-4 flex w-full items-center justify-between rounded-xl border border-ink-700 bg-ink-950/60 px-3 py-2.5 text-left transition hover:border-ink-600"
+        title="Copy address"
+      >
+        <span className="truncate font-mono text-sm text-ink-200">{i.address}</span>
+        <span className="flex items-center gap-2">
+          <span className={`rounded-md bg-ink-800 px-2 py-0.5 font-mono text-sm font-bold ${st.text}`}>:{i.port}</span>
+          {copied ? <CheckCircle2 size={14} className="text-emerald-400" /> : <Copy size={14} className="text-ink-500" />}
+        </span>
+      </button>
+
+      <div className="relative mt-4 grid grid-cols-3 gap-2">
+        <div className="rounded-xl bg-ink-900/70 px-3 py-2">
+          <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-ink-500"><Users size={11} />Users</div>
+          <div className="mt-0.5 text-lg font-bold tabular-nums text-ink-100">{i.users}</div>
+        </div>
+        <div className="rounded-xl bg-ink-900/70 px-3 py-2">
+          <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-ink-500"><Wifi size={11} />Online</div>
+          <div className="mt-0.5 flex items-center gap-1.5 text-lg font-bold tabular-nums text-ink-100">
+            {i.online > 0 && <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />}{i.online}
+          </div>
+        </div>
+        <div className="rounded-xl bg-ink-900/70 px-3 py-2">
+          <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-ink-500"><Activity size={11} />Traffic</div>
+          <div className="mt-0.5 truncate text-lg font-bold tabular-nums text-ink-100" title={`↓ ${fmtTraffic(i.down)} · ↑ ${fmtTraffic(i.up)}`}>{fmtTraffic(total, total >= 1e9 ? 2 : 1)}</div>
+        </div>
+      </div>
+
+      {canEdit && (
+        <div className="relative mt-4 flex gap-2 border-t border-ink-800 pt-3">
+          <button className="btn-ghost flex-1 py-1.5 text-xs" onClick={onEdit}><Edit3 size={13} />Edit</button>
+          <button className="btn-ghost py-1.5 text-xs hover:border-red-900 hover:text-red-300" onClick={onDelete} aria-label="Delete"><Trash2 size={13} /></button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function NodeCard({ n }: { n: VpnNode }) {
   const state = !n.xray_installed ? "missing" : !n.online ? "offline" : n.error ? "error" : !n.running ? "stopped" : !n.in_sync ? "syncing" : "ok";
-  const tone = { ok: "text-emerald-300", syncing: "text-sky-300", stopped: "text-amber-300", error: "text-red-300", offline: "text-red-300", missing: "text-ink-400" }[state];
-  const label = { ok: "Running · in sync", syncing: "Applying changes…", stopped: "Xray not running", error: "Config error", offline: "Agent offline", missing: "Xray not installed" }[state];
-  const Icon = state === "ok" ? CheckCircle2 : state === "syncing" ? RefreshCw : state === "missing" ? Server : XCircle;
+  const meta = {
+    ok: { tone: "text-emerald-300", glow: "from-emerald-500/20", dot: "bg-emerald-400 shadow-[0_0_10px_#34d399]", label: "Running · in sync" },
+    syncing: { tone: "text-sky-300", glow: "from-sky-500/20", dot: "bg-sky-400", label: "Applying changes…" },
+    stopped: { tone: "text-amber-300", glow: "from-amber-500/20", dot: "bg-amber-400", label: "Xray not running" },
+    error: { tone: "text-red-300", glow: "from-red-500/20", dot: "bg-red-400", label: "Config error" },
+    offline: { tone: "text-red-300", glow: "from-red-500/20", dot: "bg-red-400", label: "Agent offline" },
+    missing: { tone: "text-ink-400", glow: "from-ink-500/10", dot: "bg-ink-500", label: "Xray not installed" },
+  }[state];
   return (
-    <div className="rounded-xl border border-ink-700/70 bg-ink-850 p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <Link to={`/servers/${n.agent_id}`} className="font-medium text-ink-100 hover:text-emerald-300">{n.name}</Link>
+    <div className="relative overflow-hidden rounded-2xl border border-ink-700/70 bg-ink-850 p-5 shadow-card">
+      <div className={`pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b ${meta.glow} to-transparent`} />
+      <div className="relative flex items-start gap-3">
+        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-ink-800 ring-1 ring-ink-600"><Server size={20} className="text-ink-200" /></div>
+        <div className="min-w-0 flex-1">
+          <Link to={`/servers/${n.agent_id}`} className="text-base font-semibold text-ink-100 hover:text-emerald-300">{n.name}</Link>
           <div className="font-mono text-[11px] text-ink-500">{n.remote_addr}</div>
         </div>
-        <span className={`inline-flex items-center gap-1 text-xs ${tone}`}><Icon size={13} className={state === "syncing" ? "animate-spin" : ""} />{label}</span>
+        <span className={`inline-flex items-center gap-1.5 rounded-full border border-ink-700 bg-ink-900/80 px-2.5 py-1 text-[11px] font-medium ${meta.tone}`}>
+          <span className={`h-2 w-2 rounded-full ${meta.dot} ${state === "syncing" ? "animate-pulse" : ""}`} />{meta.label}
+        </span>
       </div>
-      <div className="mt-3 flex gap-4 text-xs text-ink-400">
-        <span>{n.inbounds} inbounds</span>
-        <span>{n.online_users} online</span>
-        {n.xray_version && <span>Xray {n.xray_version}</span>}
-        {n.applied_at && <span>applied {fmtRelative(n.applied_at)}</span>}
+      <div className="relative mt-4 grid grid-cols-3 gap-2 text-center">
+        <div className="rounded-xl bg-ink-900/70 py-2"><div className="text-lg font-bold text-ink-100">{n.inbounds}</div><div className="text-[10px] uppercase tracking-wider text-ink-500">inbounds</div></div>
+        <div className="rounded-xl bg-ink-900/70 py-2"><div className="flex items-center justify-center gap-1.5 text-lg font-bold text-ink-100">{n.online_users > 0 && <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />}{n.online_users}</div><div className="text-[10px] uppercase tracking-wider text-ink-500">online</div></div>
+        <div className="rounded-xl bg-ink-900/70 py-2"><div className="truncate px-1 text-sm font-bold leading-7 text-ink-100">{n.xray_version ?? "—"}</div><div className="text-[10px] uppercase tracking-wider text-ink-500">xray</div></div>
       </div>
-      {n.error && <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap rounded-lg bg-red-950/30 p-2 text-[11px] text-red-300">{n.error}</pre>}
+      {n.applied_at && <div className="relative mt-2 text-[11px] text-ink-500">Config applied {fmtRelative(n.applied_at)}</div>}
+      {n.error && <pre className="relative mt-2 max-h-28 overflow-auto whitespace-pre-wrap rounded-lg bg-red-950/30 p-2 text-[11px] text-red-300">{n.error}</pre>}
       {state === "stopped" && (
-        <p className="mt-2 text-xs text-ink-400">
-          Xray could not start. Common causes: the port is already in use (e.g. 443 on the panel server) or a TLS file is unreadable.
-          On the server run <span className="mono">journalctl -u ipf3-xray -n 30</span> to see why.
-        </p>
+        <p className="relative mt-2 text-xs text-ink-400">Xray could not start — usually the port is already in use (e.g. 443 on the panel server). On the server: <span className="mono">journalctl -u ipf3-xray -n 30</span></p>
       )}
-      {state === "missing" && <p className="mt-2 text-xs text-ink-500">On this server run <span className="mono">sudo ./install.sh</span> → Upgrade, and answer yes to “VPN node”.</p>}
+      {state === "missing" && <p className="relative mt-2 text-xs text-ink-500">On this server run <span className="mono">sudo ./install.sh</span> → Upgrade, and answer yes to “VPN node”.</p>}
     </div>
   );
 }
@@ -335,8 +437,8 @@ function NodeCard({ n }: { n: VpnNode }) {
 export default function VpnInbounds() {
   const { can } = useAuth();
   const qc = useQueryClient();
-  const [editing, setEditing] = useState<Inbound | "new" | null>(null);
-  const { data: inbounds = [] } = useQuery({ queryKey: ["vpn-inbounds"], queryFn: () => api<Inbound[]>("/vpn/inbounds"), refetchInterval: 15000 });
+  const [editing, setEditing] = useState<{ inbound: Inbound | "new"; preset?: string } | null>(null);
+  const { data: inbounds = [] } = useQuery({ queryKey: ["vpn-inbounds"], queryFn: () => api<Inbound[]>("/vpn/inbounds"), refetchInterval: 10000 });
   const { data: nodes = [] } = useQuery({ queryKey: ["vpn-nodes"], queryFn: () => api<VpnNode[]>("/vpn/nodes"), refetchInterval: 5000 });
   const del = useMutation({
     mutationFn: (id: number) => api(`/vpn/inbounds/${id}`, { method: "DELETE" }),
@@ -346,54 +448,74 @@ export default function VpnInbounds() {
     mutationFn: (i: Inbound) => api(`/vpn/inbounds/${i.id}`, { method: "PUT", json: { ...i, enabled: !i.enabled } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["vpn-inbounds"] }),
   });
+  const totals = inbounds.reduce((a, i) => ({ up: a.up + (i.up ?? 0), down: a.down + (i.down ?? 0), online: a.online + (i.online ?? 0), on: a.on + (i.enabled ? 1 : 0) }), { up: 0, down: 0, online: 0, on: 0 });
+  const admin = can("admin");
   return (
     <>
-      <PageHeader
-        title="Inbounds"
-        subtitle="Xray listeners on your nodes. Users connect through these."
-        actions={can("admin") && <button className="btn-primary" disabled={!nodes.length} onClick={() => setEditing("new")}><Plus size={15} />New inbound</button>}
-      />
-      <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-ink-400">Nodes</h2>
-      {nodes.length === 0 ? (
-        <Card><Empty>No servers yet. Install the panel with an agent, or add servers with the installer (they become VPN nodes when Xray is enabled).</Empty></Card>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{nodes.map((n) => <NodeCard key={n.agent_id} n={n} />)}</div>
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-ink-100">Inbounds</h1>
+          <p className="mt-1 text-sm text-ink-400">Xray listeners on your nodes — users connect through these</p>
+        </div>
+        {admin && <button className="btn-primary" disabled={!nodes.length} onClick={() => setEditing({ inbound: "new" })}><Plus size={15} />New inbound</button>}
+      </div>
+
+      {inbounds.length > 0 && (
+        <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
+          {[
+            { k: "Inbounds", v: `${totals.on} / ${inbounds.length}`, s: "enabled" },
+            { k: "Online", v: totals.online, s: "users connected" },
+            { k: "Download", v: fmtTraffic(totals.down), s: "all time" },
+            { k: "Upload", v: fmtTraffic(totals.up), s: "all time" },
+          ].map((x) => (
+            <div key={x.k} className="rounded-xl border border-ink-700/70 bg-ink-850 px-4 py-3">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-400">{x.k}</div>
+              <div className="mt-0.5 text-xl font-bold tabular-nums text-ink-100">{x.v}</div>
+              <div className="text-[11px] text-ink-500">{x.s}</div>
+            </div>
+          ))}
+        </div>
       )}
-      <Card className="mt-6" title="Inbounds" bodyClass="overflow-x-auto">
-        {inbounds.length === 0 ? <Empty>No inbounds yet. Create one — “VLESS · REALITY · Vision” works out of the box.</Empty> : (
-          <table className="table">
-            <thead><tr><th>Remark</th><th>Node</th><th>Protocol</th><th>Address</th><th>Users</th><th>State</th><th /></tr></thead>
-            <tbody>
-              {inbounds.map((i) => (
-                <tr key={i.id}>
-                  <td className="font-medium text-ink-100">{i.remark}</td>
-                  <td>{i.agent_name}</td>
-                  <td>
-                    <span className="badge bg-ink-750 uppercase text-emerald-300">{i.protocol}</span>
-                    {i.protocol !== "shadowsocks" && <span className="ml-1.5 text-xs text-ink-400">{i.network} · {i.security}</span>}
-                    {i.settings.flow && <span className="ml-1.5 text-[10px] text-ink-500">vision</span>}
-                  </td>
-                  <td className="mono text-xs">{i.address}:{i.port}</td>
-                  <td>{i.users}</td>
-                  <td>
-                    <button disabled={!can("admin")} onClick={() => toggle.mutate(i)} className={`badge ${i.enabled ? "bg-emerald-900/40 text-emerald-300" : "bg-ink-750 text-ink-400"}`}>{i.enabled ? "enabled" : "disabled"}</button>
-                  </td>
-                  <td className="whitespace-nowrap text-right">
-                    {can("admin") && (
-                      <>
-                        <button className="mr-3 text-ink-400 hover:text-ink-100" onClick={() => setEditing(i)} aria-label="Edit"><Edit3 size={15} /></button>
-                        <button className="text-ink-400 hover:text-red-300" onClick={() => confirm(`Delete inbound ${i.remark}? Users lose this config.`) && del.mutate(i.id)} aria-label="Delete"><Trash2 size={15} /></button>
-                      </>
-                    )}
-                  </td>
-                </tr>
+
+      {inbounds.length === 0 ? (
+        <div className="relative overflow-hidden rounded-2xl border border-ink-700/70 bg-gradient-to-br from-emerald-950/40 to-ink-850 p-8 text-center shadow-card">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-600/20 ring-1 ring-emerald-600/40"><Sparkles className="text-emerald-300" /></div>
+          <h2 className="mt-4 text-xl font-semibold text-ink-100">Create your first inbound</h2>
+          <p className="mx-auto mt-1 max-w-md text-sm text-ink-400">Pick a preset. VLESS + REALITY works out of the box — no domain or certificate needed.</p>
+          {admin && nodes.length > 0 && (
+            <div className="mx-auto mt-6 grid max-w-3xl gap-3 sm:grid-cols-3">
+              {PRESETS.slice(0, 3).map((p) => (
+                <button key={p.id} onClick={() => setEditing({ inbound: "new", preset: p.id })} className="rounded-xl border border-ink-700 bg-ink-900/70 p-4 text-left transition hover:border-emerald-600">
+                  <div className="flex items-center gap-1.5 text-sm font-semibold text-ink-100">{p.recommended && <Sparkles size={13} className="text-emerald-400" />}{p.label}</div>
+                  <div className="mt-1 text-xs text-ink-500">{p.hint}</div>
+                </button>
               ))}
-            </tbody>
-          </table>
-        )}
-      </Card>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="grid gap-5 md:grid-cols-2 2xl:grid-cols-3">
+          {inbounds.map((i) => (
+            <InboundCard
+              key={i.id}
+              i={i}
+              canEdit={admin}
+              onEdit={() => setEditing({ inbound: i })}
+              onToggle={() => toggle.mutate(i)}
+              onDelete={() => confirm(`Delete inbound ${i.remark}? Users lose this config.`) && del.mutate(i.id)}
+            />
+          ))}
+        </div>
+      )}
       <ErrorText error={del.error || toggle.error} />
-      {editing && <InboundModal inbound={editing} nodes={nodes} onClose={() => setEditing(null)} />}
+
+      <h2 className="mb-3 mt-10 text-xs font-semibold uppercase tracking-wider text-ink-400">Nodes</h2>
+      {nodes.length === 0 ? (
+        <Card><Empty>No servers yet. Run the installer on a server and answer yes to “VPN node”.</Empty></Card>
+      ) : (
+        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">{nodes.map((n) => <NodeCard key={n.agent_id} n={n} />)}</div>
+      )}
+      {editing && <InboundModal inbound={editing.inbound} preset={editing.preset} nodes={nodes} onClose={() => setEditing(null)} />}
     </>
   );
 }

@@ -151,10 +151,13 @@ def _port_conflict(port: int) -> HTTPException:
 
 
 
-def inbound_out(i: XrayInbound, names: dict[str, str], users: list[VpnUser]) -> InboundOut:
+def inbound_out(i: XrayInbound, names: dict[str, str], users: list[VpnUser], online: set[str] | None = None) -> InboundOut:
     out = InboundOut.model_validate(i)
     out.agent_name = names.get(i.agent_id)
-    out.users = sum(1 for u in users if xray.user_has_inbound(u, i))
+    members = [u for u in users if xray.user_has_inbound(u, i)]
+    out.users = len(members)
+    if online:
+        out.online = sum(1 for u in members if u.email in online)
     return out
 
 
@@ -163,7 +166,8 @@ async def list_inbounds(_: User = Depends(require_viewer), db: AsyncSession = De
     rows = (await db.execute(select(XrayInbound).order_by(XrayInbound.id))).scalars().all()
     names = dict((await db.execute(select(Agent.id, Agent.name))).all())
     users = (await db.execute(select(VpnUser))).scalars().all()
-    return [inbound_out(i, names, users) for i in rows]
+    online = {s.agent_id: set(s.online_users or []) for s in (await db.execute(select(XrayNodeState))).scalars()}
+    return [inbound_out(i, names, users, online.get(i.agent_id)) for i in rows]
 
 
 @router.post("/inbounds", response_model=InboundOut, status_code=201)

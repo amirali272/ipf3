@@ -318,6 +318,13 @@ async def xray_stats(body: XrayStatsIn, agent: Agent = Depends(current_agent), d
     """Per-user traffic deltas (bytes) read from Xray's StatsService with reset."""
     now = datetime.now(timezone.utc)
     day = usage_day(now)
+    for tag, t in body.inbounds.items():
+        if tag.startswith("in-") and tag[3:].isdigit() and (t.up or t.down):
+            await db.execute(
+                update(XrayInbound)
+                .where(XrayInbound.id == int(tag[3:]), XrayInbound.agent_id == agent.id)
+                .values(up=XrayInbound.up + t.up, down=XrayInbound.down + t.down)
+            )
     deltas = {}
     for email, t in body.users.items():
         if email.startswith("u") and email[1:].isdigit() and (t.up or t.down):

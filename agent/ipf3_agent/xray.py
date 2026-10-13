@@ -96,11 +96,14 @@ class TrafficCounter:
     network failure never loses traffic."""
 
     pending: dict[str, dict[str, int]] = field(default_factory=dict)
+    inbounds: dict[str, dict[str, int]] = field(default_factory=dict)
 
     def add(self, stats: list[dict]) -> None:
         for s in stats:
             parts = s.get("name", "").split(">>>")
-            if len(parts) != 4 or parts[0] != "user" or parts[2] != "traffic":
+            if len(parts) != 4 or parts[0] not in ("user", "inbound") or parts[2] != "traffic":
+                continue
+            if parts[0] == "inbound" and parts[1] == "api":
                 continue
             try:
                 value = int(s.get("value", 0))
@@ -109,22 +112,33 @@ class TrafficCounter:
             if value <= 0:
                 continue
             key = "up" if parts[3] == "uplink" else "down"
-            u = self.pending.setdefault(parts[1], {"up": 0, "down": 0})
+            target = self.pending if parts[0] == "user" else self.inbounds
+            u = target.setdefault(parts[1], {"up": 0, "down": 0})
             u[key] += value
 
     def take(self) -> dict[str, dict[str, int]]:
         p, self.pending = self.pending, {}
         return p
 
-    def restore(self, p: dict[str, dict[str, int]]) -> None:
-        for email, t in p.items():
-            u = self.pending.setdefault(email, {"up": 0, "down": 0})
+    def take_inbounds(self) -> dict[str, dict[str, int]]:
+        p, self.inbounds = self.inbounds, {}
+        return p
+
+    @staticmethod
+    def _merge(into: dict[str, dict[str, int]], p: dict[str, dict[str, int]]) -> None:
+        for k, t in p.items():
+            u = into.setdefault(k, {"up": 0, "down": 0})
             u["up"] += t["up"]
             u["down"] += t["down"]
 
+    def restore(self, p: dict[str, dict[str, int]], inbounds: dict[str, dict[str, int]] | None = None) -> None:
+        self._merge(self.pending, p)
+        if inbounds:
+            self._merge(self.inbounds, inbounds)
+
 
 async def query_stats(api_port: int) -> list[dict]:
-    code, out = await _run(XRAY_BIN, "api", "statsquery", "-s", f"127.0.0.1:{api_port}", "-pattern", "user>>>", "-reset", timeout=10)
+    code, out = await _run(XRAY_BIN, "api", "statsquery", "-s", f"127.0.0.1:{api_port}", "-pattern", ">>>traffic>>>", "-reset", timeout=10)
     if code != 0:
         return []
     try:

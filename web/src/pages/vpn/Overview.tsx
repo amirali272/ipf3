@@ -1,13 +1,81 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowDown, ArrowRight, ArrowUp, CalendarClock, Network, UserCheck, Users, Wifi } from "lucide-react";
-import type { ReactNode } from "react";
+import { ArrowDown, ArrowRight, ArrowUp, CalendarClock, Network, Plus, QrCode as QrIcon, Search, UserCheck, Users, Wifi } from "lucide-react";
+import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api/client";
-import type { VpnNode, VpnOverview } from "../../api/types";
+import type { Inbound, VpnNode, VpnOverview, VpnUser } from "../../api/types";
 import { DailyBars } from "../../components/charts";
 import { Card, Empty } from "../../components/ui";
-import { expiryText, UsageBar } from "../../components/vpn";
+import { CopyButton, expiryText, UsageBar, VpnStatusBadge } from "../../components/vpn";
+import { useAuth } from "../../lib/auth";
+import { fmtRelative } from "../../lib/format";
+import { ShareModal, UserModal } from "./Users";
 import { fmtTraffic } from "../../lib/format";
+
+function UsersPanel() {
+  const { can } = useAuth();
+  const [q, setQ] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [sharing, setSharing] = useState<VpnUser | null>(null);
+  const { data: users = [] } = useQuery({ queryKey: ["vpn-users", "", ""], queryFn: () => api<VpnUser[]>("/vpn/users"), refetchInterval: 10000 });
+  const { data: inbounds = [] } = useQuery({ queryKey: ["vpn-inbounds"], queryFn: () => api<Inbound[]>("/vpn/inbounds") });
+  const rank = (u: VpnUser) => (u.online ? 2e13 : 0) + (u.last_online_at ? new Date(u.last_online_at).getTime() / 1000 : 0);
+  const shown = users
+    .filter((u) => !q || u.username.toLowerCase().includes(q.toLowerCase()))
+    .sort((a, b) => rank(b) - rank(a))
+    .slice(0, 10);
+  return (
+    <section className="card mt-6 overflow-hidden">
+      <div className="card-header flex-wrap">
+        <h2 className="flex items-center gap-2 text-base font-semibold text-ink-100">
+          <Users size={18} className="text-emerald-400" />Users
+          <span className="rounded-md bg-ink-750 px-1.5 text-xs font-medium text-ink-300">{users.length}</span>
+        </h2>
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-500" />
+            <input className="input w-44 py-1.5 pl-8 text-sm" placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} />
+          </div>
+          {can("operator") && <button className="btn-primary py-1.5" onClick={() => setCreating(true)}><Plus size={14} />New user</button>}
+          <Link to="/vpn/users" className="btn-ghost py-1.5 text-xs">All <ArrowRight size={12} /></Link>
+        </div>
+      </div>
+      {shown.length === 0 ? (
+        <Empty>{users.length ? "No users match." : "No users yet — create one to get a subscription link."}</Empty>
+      ) : (
+        <ul className="divide-y divide-ink-800">
+          {shown.map((u) => {
+            const exp = expiryText(u.expire_at);
+            return (
+              <li key={u.id} className="grid grid-cols-[auto_1fr_auto] items-center gap-4 px-4 py-3 transition hover:bg-ink-800/40 md:grid-cols-[auto_minmax(140px,1fr)_minmax(160px,1.2fr)_120px_auto]">
+                <div className="relative">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-ink-700 to-ink-800 text-sm font-bold uppercase text-emerald-300 ring-1 ring-ink-600">
+                    {u.username.slice(0, 2)}
+                  </div>
+                  <span className={`absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-ink-850 ${u.online ? "bg-emerald-400 shadow-[0_0_8px_#34d399]" : "bg-ink-600"}`} />
+                </div>
+                <div className="min-w-0">
+                  <button onClick={() => setSharing(u)} className="truncate font-medium text-ink-100 hover:text-emerald-300">{u.username}</button>
+                  <div className="mt-0.5 flex items-center gap-2"><VpnStatusBadge status={u.status} />
+                    <span className="hidden text-[11px] text-ink-500 sm:inline">{u.online ? "online now" : u.last_online_at ? `seen ${fmtRelative(u.last_online_at)}` : "never connected"}</span>
+                  </div>
+                </div>
+                <div className="hidden md:block"><UsageBar used={u.used} limit={u.data_limit} /></div>
+                <div className={`hidden text-sm md:block ${exp.tone}`}>{exp.text}</div>
+                <div className="flex items-center gap-1.5">
+                  <button className="btn-ghost px-2.5 py-1.5 text-xs" onClick={() => setSharing(u)} aria-label="QR and links"><QrIcon size={13} /></button>
+                  <CopyButton text={u.sub_url} label="Sub" />
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {creating && <UserModal user="new" inbounds={inbounds} onClose={() => setCreating(false)} />}
+      {sharing && <ShareModal user={sharing} onClose={() => setSharing(null)} />}
+    </section>
+  );
+}
 
 function Tile({ label, value, sub, icon, tone = "neutral" }: { label: string; value: ReactNode; sub?: ReactNode; icon: ReactNode; tone?: "green" | "blue" | "amber" | "neutral" }) {
   const box = { green: "bg-emerald-600/15 text-emerald-300 ring-emerald-600/40", blue: "bg-sky-600/15 text-sky-300 ring-sky-600/40", amber: "bg-amber-600/15 text-amber-300 ring-amber-600/40", neutral: "bg-ink-750 text-ink-300 ring-ink-600" }[tone];
@@ -56,6 +124,7 @@ export default function VpnOverviewPage() {
         <Tile tone={(o?.expiring_soon.length ?? 0) ? "amber" : "neutral"} icon={<CalendarClock size={20} />} label="Expiring in 3 days" value={o?.expiring_soon.length ?? 0} />
         <Tile icon={<ArrowDown size={20} />} label="Avg per active user (month)" value={fmtTraffic(s?.active ? ((o?.traffic.month_down ?? 0) + (o?.traffic.month_up ?? 0)) / s.active : 0)} />
       </div>
+      <UsersPanel />
       <Card className="mt-6" title="Daily VPN traffic (30 days)" actions={o && <span className="text-xs text-ink-500">{o.timezone}</span>}>
         <DailyBars
           data={o?.daily ?? []}

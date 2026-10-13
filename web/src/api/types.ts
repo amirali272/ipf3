@@ -329,6 +329,9 @@ export interface Inbound {
   created_at: string;
   tag: string;
   users: number;
+  up: number;
+  down: number;
+  online: number;
 }
 
 export interface VpnUser {

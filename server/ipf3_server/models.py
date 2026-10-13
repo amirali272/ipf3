@@ -346,6 +346,8 @@ class XrayInbound(Base):
     settings: Mapped[dict] = mapped_column(JSONB, default=dict)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(TS, default=utcnow)
+    up: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
+    down: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
 
     @property
     def tag(self) -> str:

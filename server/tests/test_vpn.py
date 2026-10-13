@@ -245,3 +245,13 @@ async def test_port_already_used_on_node_is_rejected(admin, anon):
     assert (await admin.put(f"/api/v1/vpn/inbounds/{ib['id']}", json=body)).status_code == 200
     body["port"] = 443
     assert (await admin.put(f"/api/v1/vpn/inbounds/{ib['id']}", json=body)).status_code == 409
+
+
+async def test_inbound_traffic_and_online(admin, anon, operator):
+    agent_id, h = await _node(admin, anon)
+    ib = await _inbound(admin, agent_id, port=2222)
+    u = (await operator.post("/api/v1/vpn/users", json={"username": "olive"})).json()
+    await anon.post("/api/agent/v1/xray/stats", headers=h, json={"users": {}, "inbounds": {f"in-{ib['id']}": {"up": 10, "down": 90}, "in-99999": {"up": 1, "down": 1}}})
+    await anon.post("/api/agent/v1/xray/state", headers=h, json={"running": True, "online_users": [f"u{u['id']}"]})
+    row = [i for i in (await operator.get("/api/v1/vpn/inbounds")).json() if i["id"] == ib["id"]][0]
+    assert row["up"] == 10 and row["down"] == 90 and row["online"] == 1 and row["users"] == 1

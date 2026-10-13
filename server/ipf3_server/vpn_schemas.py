@@ -193,6 +193,9 @@ class InboundOut(BaseModel):
     created_at: datetime
     tag: str
     users: int = 0
+    up: int = 0
+    down: int = 0
+    online: int = 0
 
 
 _USERNAME = r"^[A-Za-z0-9_.-]{2,64}$"
@@ -257,3 +260,4 @@ class XrayTraffic(BaseModel):
 
 class XrayStatsIn(BaseModel):
     users: dict[str, XrayTraffic] = Field(default_factory=dict, max_length=100000)
+    inbounds: dict[str, XrayTraffic] = Field(default_factory=dict, max_length=10000)
