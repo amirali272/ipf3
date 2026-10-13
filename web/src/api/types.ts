@@ -393,3 +393,44 @@ export interface SubInfo {
   sub_url: string;
   links: string[];
 }
+
+export interface Outbound {
+  id: number;
+  remark: string;
+  protocol: string;
+  address: string;
+  port: number | null;
+  network: string;
+  security: string;
+  agent_ids: string[] | null;
+  nodes: string[];
+  enabled: boolean;
+  up: number;
+  down: number;
+  rules: number;
+  created_at: string;
+}
+
+export interface OutboundDetail extends Outbound {
+  link: string;
+  config: Record<string, unknown>;
+}
+
+export type RuleAction = "direct" | "block" | "outbound";
+
+export interface RoutingRule {
+  id: number;
+  position: number;
+  remark: string;
+  action: RuleAction;
+  outbound_id: number | null;
+  outbound: string | null;
+  inbound_ids: number[];
+  user_ids: number[];
+  domains: string[];
+  ips: string[];
+  port: string;
+  network: "" | "tcp" | "udp" | "tcp,udp";
+  protocols: ("http" | "tls" | "quic" | "bittorrent")[];
+  enabled: boolean;
+}

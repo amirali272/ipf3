@@ -83,6 +83,42 @@ a firewall, open the inbound port, for example `ufw allow 8443`.
 Configs block access to private networks (`geoip:private`, which includes the node's
 localhost services) and BitTorrent.
 
+## Outbounds & routing
+
+**VPN → Outbounds & routing** lets a node send user traffic on to another server
+instead of straight out to the internet. For example, users connect to a node in
+Iran, and their traffic leaves from a server in Germany or through WARP.
+
+**Outbounds.** Paste a config link: `vless://`, `vmess://`, `trojan://`, `ss://`,
+`socks://`, `http(s)://` or `wireguard://`. You can also paste an Xray outbound or a
+full client config as JSON. The panel converts the link into an Xray outbound,
+previews it, and lets you limit it to selected nodes. When Xray is installed on the
+panel host, the panel checks every outbound with `xray run -test` before saving it,
+and each node checks its full config again before applying it. Traffic is counted
+per outbound.
+
+**Routing rules.** Rules are checked from top to bottom, and the first match decides
+where the traffic goes: **Direct**, **Block** or an outbound. All conditions you fill
+in must match. The conditions are:
+
+- domains: `geosite:…`, `domain:`, `full:`, `keyword:`, `regexp:`
+- IPs: `geoip:…` or a CIDR
+- users
+- inbounds
+- destination ports
+- TCP/UDP
+- sniffed protocol
+
+A rule with no conditions matches all traffic. Templates cover the common cases:
+Iranian sites direct, block ads, everything through an outbound, some sites through an
+outbound, some users through an outbound. Two built-in rules always come first:
+private networks are blocked, and BitTorrent is blocked. Traffic that no rule matches
+goes out directly.
+
+A rule that uses an outbound applies only on the nodes where that outbound is
+available. Changes reach the nodes within about 10 seconds. Per-outbound traffic needs
+agents upgraded to this version.
+
 ## Users
 
 Each user has:

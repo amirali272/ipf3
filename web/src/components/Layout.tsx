@@ -11,6 +11,7 @@ import {
   Network,
   ScrollText,
   Search,
+  Route,
   Server,
   Settings,
   ShieldCheck,
@@ -20,7 +21,7 @@ import {
 
 type NavItem = { to: string; label: string; icon: typeof Gauge; end?: boolean; badge?: number; tone?: "green" | "red" };
 import { useEffect, useRef, useState } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
 import type { Agent, Overview, SystemStatus } from "../api/types";
@@ -194,6 +195,18 @@ function GlobalSearch() {
 export default function Layout() {
   const { can } = useAuth();
   const [open, setOpen] = useState(false);
+  const { pathname } = useLocation();
+  const [monitoringOpen, setMonitoringOpen] = useState(() => {
+    try { return localStorage.getItem("nav.monitoring") === "1"; } catch { return false; }
+  });
+  const inMonitoring = !["/", "/account", "/users", "/audit"].includes(pathname) && !pathname.startsWith("/vpn/");
+  useEffect(() => {
+    if (inMonitoring) setMonitoringOpen(true);
+  }, [inMonitoring]);
+  const toggleMonitoring = (v: boolean) => {
+    setMonitoringOpen(v);
+    try { localStorage.setItem("nav.monitoring", v ? "1" : "0"); } catch { /* storage unavailable */ }
+  };
   const { data: overview } = useQuery({
     queryKey: ["overview"],
     queryFn: () => api<Overview>("/analytics/overview"),
@@ -202,17 +215,19 @@ export default function Layout() {
   const { data: status } = useQuery({ queryKey: ["system-status"], queryFn: () => api<SystemStatus>("/system/status"), refetchInterval: 15000 });
   const firing = Object.values(overview?.alerts_firing ?? {}).reduce((a, b) => a + (b ?? 0), 0);
 
-  const SECTIONS: { title: string; items: NavItem[] }[] = [
+  const SECTIONS: { title: string; items: NavItem[]; collapsible?: boolean }[] = [
     {
       title: "VPN",
       items: [
         { to: "/", label: "Overview", icon: Gauge, end: true },
         { to: "/vpn/users", label: "Users", icon: Users },
         { to: "/vpn/inbounds", label: "Inbounds & nodes", icon: Network },
+        { to: "/vpn/outbounds", label: "Outbounds & routing", icon: Route },
       ],
     },
     {
-      title: "Monitoring",
+      title: "Monitoring & traffic",
+      collapsible: true,
       items: [
         { to: "/monitoring", label: "Dashboard", icon: Activity },
         { to: "/servers", label: "Servers", icon: Server, badge: overview?.agents_total || undefined, tone: "green" },
@@ -266,12 +281,34 @@ export default function Layout() {
           <Brand />
         </div>
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-          {SECTIONS.map((sec, i) => (
-            <div key={sec.title}>
-              <div className={`px-3 pb-1 ${i ? "pt-6" : "pt-1"} text-[11px] font-semibold uppercase tracking-wider text-ink-500`}>{sec.title}</div>
-              <div className="space-y-1">{sec.items.map(link)}</div>
-            </div>
-          ))}
+          {SECTIONS.map((sec, i) => {
+            if (!sec.collapsible) {
+              return (
+                <div key={sec.title}>
+                  <div className={`px-3 pb-1 ${i ? "pt-6" : "pt-1"} text-[11px] font-semibold uppercase tracking-wider text-ink-500`}>{sec.title}</div>
+                  <div className="space-y-1">{sec.items.map(link)}</div>
+                </div>
+              );
+            }
+            const active = sec.items.some((it) => pathname === it.to || pathname.startsWith(`${it.to}/`)) || pathname.startsWith("/jobs/");
+            const expanded = monitoringOpen;
+            const alerts = sec.items.reduce((a, it) => a + (it.tone === "red" ? it.badge ?? 0 : 0), 0);
+            return (
+              <div key={sec.title} className="pt-5">
+                <button
+                  onClick={() => toggleMonitoring(!expanded)}
+                  className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${active ? "text-emerald-200" : "text-ink-300 hover:bg-ink-800 hover:text-ink-100"}`}
+                  aria-expanded={expanded}
+                >
+                  <Activity size={18} />
+                  <span className="flex-1 text-left">{sec.title}</span>
+                  {!expanded && alerts > 0 && <span className="min-w-[22px] rounded-md bg-red-500 px-1.5 py-0.5 text-center text-[11px] font-semibold text-white">{alerts}</span>}
+                  <ChevronDown size={16} className={`transition-transform ${expanded ? "rotate-180" : ""}`} />
+                </button>
+                {expanded && <div className="ml-4 mt-1 space-y-1 border-l border-ink-800 pl-3">{sec.items.map(link)}</div>}
+              </div>
+            );
+          })}
           {can("admin") && (
             <>
               <div className="px-3 pb-1 pt-6 text-[11px] font-semibold uppercase tracking-wider text-ink-500">Administration</div>

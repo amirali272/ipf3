@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Any
 from urllib.parse import quote, urlencode
 
-from ..models import VpnUser, XrayInbound
+from ..models import VpnUser, XrayInbound, XrayOutbound, XrayRoutingRule
 from ..vpn_schemas import API_PORT, SS_2022
 
 
@@ -112,25 +112,79 @@ def inbound_config(inbound: XrayInbound, users: list[VpnUser]) -> dict[str, Any]
     return cfg
 
 
-def build_config(inbounds: list[XrayInbound], users: list[VpnUser], now: datetime | None = None) -> dict[str, Any]:
+def rule_config(rule: XrayRoutingRule, inbound_tags: set[str], outbound_tags: set[str]) -> dict[str, Any] | None:
+    """One routing rule for a node, or None when it doesn't apply there (its inbounds
+    or its outbound are not on this node)."""
+    if rule.action == "outbound":
+        target = f"out-{rule.outbound_id}"
+        if target not in outbound_tags:
+            return None
+    else:
+        target = "blocked" if rule.action == "block" else "direct"
+    r: dict[str, Any] = {"type": "field", "outboundTag": target}
+    if rule.inbound_ids:
+        tags = sorted(t for t in (f"in-{i}" for i in rule.inbound_ids) if t in inbound_tags)
+        if not tags:
+            return None
+        r["inboundTag"] = tags
+    if rule.user_ids:
+        r["user"] = [f"u{i}" for i in rule.user_ids]
+    if rule.domains:
+        r["domain"] = list(rule.domains)
+    if rule.ips:
+        r["ip"] = list(rule.ips)
+    if rule.port:
+        r["port"] = rule.port
+    if rule.protocols:
+        r["protocol"] = list(rule.protocols)
+    if rule.network:
+        r["network"] = rule.network
+    if len(r) == 2:
+        r["network"] = "tcp,udp"  # no condition = all traffic (the API rule always comes first)
+    return r
+
+
+def build_config(
+    inbounds: list[XrayInbound],
+    users: list[VpnUser],
+    now: datetime | None = None,
+    outbounds: list[XrayOutbound] | None = None,
+    rules: list[XrayRoutingRule] | None = None,
+) -> dict[str, Any]:
     """Full Xray config for one node. Only active users and enabled inbounds are
-    included, so expiry and data limits are enforced by regeneration."""
+    included, so expiry and data limits are enforced by regeneration. Outbounds and
+    rules must already be filtered to this node."""
     active = sorted((u for u in users if u.status(now) == "active"), key=lambda u: u.id)
+    enabled = [i for i in sorted(inbounds, key=lambda i: i.id) if i.enabled]
+    obs = [o for o in sorted(outbounds or [], key=lambda o: o.id) if o.enabled]
+    inbound_tags = {i.tag for i in enabled}
+    outbound_tags = {o.tag for o in obs}
+    custom = [
+        r
+        for rule in sorted(rules or [], key=lambda r: (r.position, r.id))
+        if rule.enabled and (r := rule_config(rule, inbound_tags, outbound_tags)) is not None
+    ]
     return {
         "log": {"loglevel": "warning", "access": "none"},
         "api": {"tag": "api", "services": ["StatsService"]},
         "stats": {},
         "policy": {
             "levels": {"0": {"statsUserUplink": True, "statsUserDownlink": True, "statsUserOnline": True}},
-            "system": {"statsInboundUplink": True, "statsInboundDownlink": True},
+            "system": {
+                "statsInboundUplink": True,
+                "statsInboundDownlink": True,
+                "statsOutboundUplink": True,
+                "statsOutboundDownlink": True,
+            },
         },
         "inbounds": [
             {"tag": "api", "listen": "127.0.0.1", "port": API_PORT, "protocol": "dokodemo-door", "settings": {"address": "127.0.0.1"}},
-            *[inbound_config(i, active) for i in sorted(inbounds, key=lambda i: i.id) if i.enabled],
+            *[inbound_config(i, active) for i in enabled],
         ],
         "outbounds": [
             {"tag": "direct", "protocol": "freedom", "settings": {"domainStrategy": "UseIP"}},
             {"tag": "blocked", "protocol": "blackhole"},
+            *[{**o.config, "tag": o.tag} for o in obs],
         ],
         "routing": {
             "domainStrategy": "IPIfNonMatch",
@@ -139,6 +193,7 @@ def build_config(inbounds: list[XrayInbound], users: list[VpnUser], now: datetim
                 # Never let VPN users reach the node's own private networks or localhost services.
                 {"type": "field", "ip": ["geoip:private"], "outboundTag": "blocked"},
                 {"type": "field", "protocol": ["bittorrent"], "outboundTag": "blocked"},
+                *custom,
             ],
         },
     }

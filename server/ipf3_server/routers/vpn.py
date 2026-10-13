@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_session
 from ..deps import audit, require_admin, require_operator, require_viewer
-from ..models import Agent, User, VpnUser, VpnUserTrafficDaily, XrayInbound, XrayNodeState
+from ..models import Agent, User, VpnUser, VpnUserTrafficDaily, XrayInbound, XrayNodeState, XrayOutbound, XrayRoutingRule
 from ..services import usage, xray
 from ..services.ratelimit import SlidingWindowLimiter
 from ..services.x25519 import generate_keypair
@@ -93,10 +93,14 @@ async def nodes(_: User = Depends(require_viewer), db: AsyncSession = Depends(ge
     counts = dict((await db.execute(select(XrayInbound.agent_id, func.count()).group_by(XrayInbound.agent_id))).all())
     inbounds = (await db.execute(select(XrayInbound))).scalars().all()
     users = (await db.execute(select(VpnUser))).scalars().all()
+    outbounds = (await db.execute(select(XrayOutbound))).scalars().all()
+    rules = (await db.execute(select(XrayRoutingRule))).scalars().all()
     out = []
     for a in agents:
         st = states.get(a.id)
-        desired = xray.config_hash(xray.build_config([i for i in inbounds if i.agent_id == a.id], users))
+        desired = xray.config_hash(
+            xray.build_config([i for i in inbounds if i.agent_id == a.id], users, outbounds=[o for o in outbounds if o.on_node(a.id)], rules=rules)
+        )
         out.append(
             {
                 "agent_id": a.id,

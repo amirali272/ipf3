@@ -128,11 +128,12 @@ class Agent:
         self.xray_traffic.add(stats)
         pending = self.xray_traffic.take()
         pending_ib = self.xray_traffic.take_inbounds()
-        if pending or pending_ib:
+        pending_ob = self.xray_traffic.take_outbounds()
+        if pending or pending_ib or pending_ob:
             try:
-                await self._request("POST", "/xray/stats", json={"users": pending, "inbounds": pending_ib})
+                await self._request("POST", "/xray/stats", json={"users": pending, "inbounds": pending_ib, "outbounds": pending_ob})
             except BaseException:
-                self.xray_traffic.restore(pending, pending_ib)
+                self.xray_traffic.restore(pending, pending_ib, pending_ob)
                 raise
         await self._request(
             "POST",

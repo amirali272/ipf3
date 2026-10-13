@@ -354,6 +354,54 @@ class XrayInbound(Base):
         return f"in-{self.id}"
 
 
+class XrayOutbound(Base):
+    """An Xray outbound (upstream proxy) that routing rules can send traffic to."""
+
+    __tablename__ = "xray_outbounds"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    remark: Mapped[str] = mapped_column(String(128))
+    protocol: Mapped[str] = mapped_column(String(16))
+    # Share link it was created from (empty when pasted as JSON).
+    link: Mapped[str] = mapped_column(Text, default="")
+    # Xray outbound object without "tag".
+    config: Mapped[dict] = mapped_column(JSONB, default=dict)
+    # Nodes that get this outbound; NULL = every node.
+    agent_ids: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(TS, default=utcnow)
+    up: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
+    down: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
+
+    @property
+    def tag(self) -> str:
+        return f"out-{self.id}"
+
+    def on_node(self, agent_id: str) -> bool:
+        return self.agent_ids is None or agent_id in self.agent_ids
+
+
+class XrayRoutingRule(Base):
+    """An ordered routing rule; the first matching rule decides the outbound."""
+
+    __tablename__ = "xray_routing_rules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    position: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    remark: Mapped[str] = mapped_column(String(128), default="")
+    action: Mapped[str] = mapped_column(String(16))  # direct | block | outbound
+    outbound_id: Mapped[int | None] = mapped_column(ForeignKey("xray_outbounds.id", ondelete="RESTRICT"), nullable=True)
+    inbound_ids: Mapped[list[int]] = mapped_column(JSONB, default=list)
+    user_ids: Mapped[list[int]] = mapped_column(JSONB, default=list)
+    domains: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    ips: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    port: Mapped[str] = mapped_column(String(128), default="")
+    network: Mapped[str] = mapped_column(String(8), default="")
+    protocols: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(TS, default=utcnow)
+
+
 class VpnUser(Base):
     __tablename__ = "vpn_users"
 

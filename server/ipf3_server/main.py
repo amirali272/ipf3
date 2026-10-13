@@ -13,7 +13,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from . import __version__
 from .config import get_settings
 from .db import dispose_engine, get_engine
-from .routers import agent_api, agents, alerts, analytics, auth, jobs, live, users, vpn
+from .routers import agent_api, agents, alerts, analytics, auth, jobs, live, users, vpn, vpn_routing
 
 log = logging.getLogger("ipf3")
 
@@ -81,7 +81,7 @@ def create_app() -> FastAPI:
         )
 
     api_prefix = "/api/v1"
-    for r in (auth.router, users.router, agents.router, jobs.router, alerts.router, analytics.router, live.router, vpn.router):
+    for r in (auth.router, users.router, agents.router, jobs.router, alerts.router, analytics.router, live.router, vpn.router, vpn_routing.router):
         app.include_router(r, prefix=api_prefix)
     app.include_router(agent_api.router, prefix="/api")
     app.include_router(vpn.public)

@@ -9,6 +9,9 @@ os.environ.setdefault(
     os.environ.get("IPF3_TEST_DATABASE_URL", "postgresql+asyncpg://postgres@127.0.0.1:5432/ipf3_test"),
 )
 os.environ["IPF3_COOKIE_SECURE"] = "false"
+if os.environ.get("XRAY_BIN"):
+    os.environ.setdefault("IPF3_XRAY_BIN", os.environ["XRAY_BIN"])
+    os.environ.setdefault("IPF3_XRAY_ASSETS", os.path.dirname(os.environ["XRAY_BIN"]))
 
 import httpx  # noqa: E402
 import pytest  # noqa: E402

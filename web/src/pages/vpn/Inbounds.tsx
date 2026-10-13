@@ -4,7 +4,7 @@ import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api/client";
 import type { EnrollmentToken, Inbound, InboundSettings, VpnNetwork, VpnNode, VpnProtocol, VpnSecurity } from "../../api/types";
-import { CopyButton } from "../../components/vpn";
+import { Chip, CopyButton, Switch } from "../../components/vpn";
 import { Card, Empty, ErrorText, Field, Modal } from "../../components/ui";
 import { fmtRelative, fmtTraffic } from "../../lib/format";
 import { useAuth } from "../../lib/auth";
@@ -310,24 +310,6 @@ const PROTO_STYLE: Record<string, { grad: string; ring: string; text: string; la
   shadowsocks: { grad: "from-sky-500 to-sky-700", ring: "ring-sky-500/40", text: "text-sky-300", label: "SS" },
 };
 
-function Chip({ children, tone = "neutral", icon }: { children: ReactNode; tone?: "neutral" | "green" | "amber"; icon?: ReactNode }) {
-  const cls = { neutral: "border-ink-600 bg-ink-800 text-ink-200", green: "border-emerald-700/60 bg-emerald-950/40 text-emerald-300", amber: "border-amber-700/50 bg-amber-950/30 text-amber-300" }[tone];
-  return <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${cls}`}>{icon}{children}</span>;
-}
-
-function Switch({ on, onChange, disabled }: { on: boolean; onChange: () => void; disabled?: boolean }) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onChange}
-      aria-pressed={on}
-      className={`relative h-6 w-11 shrink-0 rounded-full transition disabled:opacity-40 ${on ? "bg-emerald-600 shadow-[0_0_12px_rgba(16,185,129,0.45)]" : "bg-ink-700"}`}
-    >
-      <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${on ? "left-[22px]" : "left-0.5"}`} />
-    </button>
-  );
-}
 
 function InboundCard({ i, canEdit, onEdit, onDelete, onToggle }: { i: Inbound; canEdit: boolean; onEdit: () => void; onDelete: () => void; onToggle: () => void }) {
   const st = PROTO_STYLE[i.protocol];

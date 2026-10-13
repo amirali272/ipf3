@@ -27,6 +27,8 @@ from ..models import (
     VpnUserTrafficDaily,
     XrayInbound,
     XrayNodeState,
+    XrayOutbound,
+    XrayRoutingRule,
 )
 from ..schemas import (
     AgentJobOut,
@@ -282,7 +284,9 @@ async def xray_config(
 
     inbounds = (await db.execute(select(XrayInbound).where(XrayInbound.agent_id == agent.id))).scalars().all()
     users = (await db.execute(select(VpnUser))).scalars().all()
-    cfg = xray_svc.build_config(inbounds, users)
+    outbounds = [o for o in (await db.execute(select(XrayOutbound))).scalars() if o.on_node(agent.id)]
+    rules = (await db.execute(select(XrayRoutingRule))).scalars().all()
+    cfg = xray_svc.build_config(inbounds, users, outbounds=outbounds, rules=rules)
     h = xray_svc.config_hash(cfg)
     await db.commit()  # persist last_seen_at
     if hash == h:
@@ -318,6 +322,11 @@ async def xray_stats(body: XrayStatsIn, agent: Agent = Depends(current_agent), d
     """Per-user traffic deltas (bytes) read from Xray's StatsService with reset."""
     now = datetime.now(timezone.utc)
     day = usage_day(now)
+    for tag, t in body.outbounds.items():
+        if tag.startswith("out-") and tag[4:].isdigit() and (t.up or t.down):
+            await db.execute(
+                update(XrayOutbound).where(XrayOutbound.id == int(tag[4:])).values(up=XrayOutbound.up + t.up, down=XrayOutbound.down + t.down)
+            )
     for tag, t in body.inbounds.items():
         if tag.startswith("in-") and tag[3:].isdigit() and (t.up or t.down):
             await db.execute(

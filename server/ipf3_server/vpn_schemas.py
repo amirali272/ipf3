@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import base64
+import ipaddress
+import json
 import re
 from datetime import datetime
 from typing import Literal
@@ -261,3 +263,147 @@ class XrayTraffic(BaseModel):
 class XrayStatsIn(BaseModel):
     users: dict[str, XrayTraffic] = Field(default_factory=dict, max_length=100000)
     inbounds: dict[str, XrayTraffic] = Field(default_factory=dict, max_length=10000)
+    outbounds: dict[str, XrayTraffic] = Field(default_factory=dict, max_length=10000)
+
+
+# ----------------------------------------------------------------------------- outbounds & routing
+_AGENT_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+_DOMAIN_ITEM = re.compile(r"^(?:(?:domain|full|keyword|geosite|ext):)?[A-Za-z0-9._:@!*-]{1,253}$")
+_GEO = re.compile(r"^(?:geoip:!?[A-Za-z0-9_-]{1,64}|ext:[A-Za-z0-9._-]+:[A-Za-z0-9_-]+)$")
+_PORTS = re.compile(r"^\d{1,5}(?:-\d{1,5})?(?:,\d{1,5}(?:-\d{1,5})?)*$")
+
+
+class OutboundIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    remark: str = Field("", max_length=128)
+    link: str = Field("", max_length=8192)
+    config: dict | None = None
+    agent_ids: list[str] | None = Field(None, max_length=1000)
+    enabled: bool = True
+
+    @field_validator("agent_ids")
+    @classmethod
+    def _agents(cls, v: list[str] | None) -> list[str] | None:
+        if v is not None:
+            for a in v:
+                if not _AGENT_ID.match(a):
+                    raise ValueError("invalid node id")
+            v = sorted(set(v))
+        return v
+
+    @model_validator(mode="after")
+    def _source(self) -> "OutboundIn":
+        if bool(self.link.strip()) == (self.config is not None):
+            raise ValueError("give either a share link or a JSON config")
+        if self.config is not None and len(json.dumps(self.config)) > 65536:
+            raise ValueError("config is too large")
+        return self
+
+
+class OutboundOut(BaseModel):
+    id: int
+    remark: str
+    protocol: str
+    address: str
+    port: int | None
+    network: str
+    security: str
+    agent_ids: list[str] | None
+    nodes: list[str]
+    enabled: bool
+    up: int
+    down: int
+    rules: int
+    created_at: datetime
+
+
+class OutboundDetail(OutboundOut):
+    link: str
+    config: dict
+
+
+class RuleIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    remark: str = Field("", max_length=128)
+    action: Literal["direct", "block", "outbound"]
+    outbound_id: int | None = None
+    inbound_ids: list[int] = Field(default_factory=list, max_length=1000)
+    user_ids: list[int] = Field(default_factory=list, max_length=100000)
+    domains: list[str] = Field(default_factory=list, max_length=2000)
+    ips: list[str] = Field(default_factory=list, max_length=2000)
+    port: str = Field("", max_length=128)
+    network: Literal["", "tcp", "udp", "tcp,udp"] = ""
+    protocols: list[Literal["http", "tls", "quic", "bittorrent"]] = Field(default_factory=list, max_length=4)
+    enabled: bool = True
+
+    @field_validator("domains")
+    @classmethod
+    def _domains(cls, v: list[str]) -> list[str]:
+        out = []
+        for d in (x.strip() for x in v):
+            if not d:
+                continue
+            if d.startswith("regexp:"):
+                if not 7 < len(d) <= 512 or any(c in d for c in "\n\r\""):
+                    raise ValueError(f"invalid regexp rule: {d[:60]}")
+                try:
+                    re.compile(d[7:])
+                except re.error:
+                    raise ValueError(f"invalid regexp: {d[:60]}") from None
+            elif not _DOMAIN_ITEM.match(d):
+                raise ValueError(f"invalid domain rule: {d[:60]}")
+            out.append(d)
+        return list(dict.fromkeys(out))
+
+    @field_validator("ips")
+    @classmethod
+    def _ips(cls, v: list[str]) -> list[str]:
+        out = []
+        for x in (i.strip() for i in v):
+            if not x:
+                continue
+            if not _GEO.match(x):
+                try:
+                    ipaddress.ip_network(x, strict=False)
+                except ValueError:
+                    raise ValueError(f"invalid IP / CIDR / geoip: {x[:60]}") from None
+            out.append(x)
+        return list(dict.fromkeys(out))
+
+    @field_validator("port")
+    @classmethod
+    def _port(cls, v: str) -> str:
+        v = v.replace(" ", "")
+        if v:
+            if not _PORTS.match(v):
+                raise ValueError("ports look like 443 or 53,443,1000-2000")
+            for part in v.split(","):
+                lo, _, hi = part.partition("-")
+                if not 1 <= int(lo) <= 65535 or (hi and not int(lo) <= int(hi) <= 65535):
+                    raise ValueError("port out of range")
+        return v
+
+    @field_validator("inbound_ids", "user_ids")
+    @classmethod
+    def _ids(cls, v: list[int]) -> list[int]:
+        return sorted(set(v))
+
+    @model_validator(mode="after")
+    def _target(self) -> "RuleIn":
+        if self.action == "outbound" and self.outbound_id is None:
+            raise ValueError("choose an outbound")
+        if self.action != "outbound":
+            self.outbound_id = None
+        return self
+
+
+class RuleOut(RuleIn):
+    id: int
+    position: int
+    outbound: str | None = None
+
+
+class RuleOrderIn(BaseModel):
+    ids: list[int] = Field(max_length=10000)

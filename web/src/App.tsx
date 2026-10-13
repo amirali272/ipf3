@@ -17,6 +17,7 @@ import UsersPage from "./pages/Users";
 import Usage from "./pages/Usage";
 import Subscription from "./pages/Subscription";
 import VpnInbounds from "./pages/vpn/Inbounds";
+import VpnOutbounds from "./pages/vpn/Outbounds";
 import VpnOverviewPage from "./pages/vpn/Overview";
 import VpnUsers from "./pages/vpn/Users";
 
@@ -38,6 +39,7 @@ export default function App() {
         <Route index element={<VpnOverviewPage />} />
         <Route path="vpn/users" element={<VpnUsers />} />
         <Route path="vpn/inbounds" element={<VpnInbounds />} />
+        <Route path="vpn/outbounds" element={<VpnOutbounds />} />
         <Route path="monitoring" element={<Dashboard />} />
         <Route path="servers" element={<Servers />} />
         <Route path="servers/:id" element={<ServerDetail />} />

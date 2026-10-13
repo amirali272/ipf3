@@ -97,13 +97,16 @@ class TrafficCounter:
 
     pending: dict[str, dict[str, int]] = field(default_factory=dict)
     inbounds: dict[str, dict[str, int]] = field(default_factory=dict)
+    outbounds: dict[str, dict[str, int]] = field(default_factory=dict)
 
     def add(self, stats: list[dict]) -> None:
         for s in stats:
             parts = s.get("name", "").split(">>>")
-            if len(parts) != 4 or parts[0] not in ("user", "inbound") or parts[2] != "traffic":
+            if len(parts) != 4 or parts[0] not in ("user", "inbound", "outbound") or parts[2] != "traffic":
                 continue
             if parts[0] == "inbound" and parts[1] == "api":
+                continue
+            if parts[0] == "outbound" and not parts[1].startswith("out-"):
                 continue
             try:
                 value = int(s.get("value", 0))
@@ -112,7 +115,7 @@ class TrafficCounter:
             if value <= 0:
                 continue
             key = "up" if parts[3] == "uplink" else "down"
-            target = self.pending if parts[0] == "user" else self.inbounds
+            target = {"user": self.pending, "inbound": self.inbounds, "outbound": self.outbounds}[parts[0]]
             u = target.setdefault(parts[1], {"up": 0, "down": 0})
             u[key] += value
 
@@ -124,6 +127,10 @@ class TrafficCounter:
         p, self.inbounds = self.inbounds, {}
         return p
 
+    def take_outbounds(self) -> dict[str, dict[str, int]]:
+        p, self.outbounds = self.outbounds, {}
+        return p
+
     @staticmethod
     def _merge(into: dict[str, dict[str, int]], p: dict[str, dict[str, int]]) -> None:
         for k, t in p.items():
@@ -131,10 +138,17 @@ class TrafficCounter:
             u["up"] += t["up"]
             u["down"] += t["down"]
 
-    def restore(self, p: dict[str, dict[str, int]], inbounds: dict[str, dict[str, int]] | None = None) -> None:
+    def restore(
+        self,
+        p: dict[str, dict[str, int]],
+        inbounds: dict[str, dict[str, int]] | None = None,
+        outbounds: dict[str, dict[str, int]] | None = None,
+    ) -> None:
         self._merge(self.pending, p)
         if inbounds:
             self._merge(self.inbounds, inbounds)
+        if outbounds:
+            self._merge(self.outbounds, outbounds)
 
 
 async def query_stats(api_port: int) -> list[dict]:

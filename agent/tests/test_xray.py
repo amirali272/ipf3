@@ -17,10 +17,16 @@ def test_traffic_counter_keeps_unacknowledged_deltas():
         {"name": "inbound>>>in-1>>>traffic>>>downlink", "value": 9},
         {"name": "inbound>>>api>>>traffic>>>downlink", "value": 5},
         {"name": "user>>>u2>>>traffic>>>downlink", "value": "0"},
+        {"name": "outbound>>>out-3>>>traffic>>>uplink", "value": 7},
+        {"name": "outbound>>>direct>>>traffic>>>uplink", "value": 70},
     ])
     p = c.take()
     assert p == {"u1": {"up": 100, "down": 400}}
     assert c.take_inbounds() == {"in-1": {"up": 0, "down": 9}}
+    ob = c.take_outbounds()
+    assert ob == {"out-3": {"up": 7, "down": 0}}
+    c.restore({}, None, ob)
+    assert c.take_outbounds() == ob
     c.add([{"name": "user>>>u1>>>traffic>>>downlink", "value": 1}])
     c.restore(p)  # delivery failed
     assert c.take() == {"u1": {"up": 100, "down": 401}}

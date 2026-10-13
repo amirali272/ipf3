@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     retention_audit_days: int = 365
     retention_usage_days: int = 1095
 
+    # Used to validate outbounds and routing rules when Xray is installed on the panel host.
+    xray_bin: str = "/usr/local/bin/xray"
+    xray_assets: str = "/usr/local/share/xray"
+
     # Calendar used for daily/monthly traffic totals (IANA name, e.g. Asia/Tehran).
     usage_timezone: str = "UTC"
 
