@@ -223,7 +223,8 @@ if [[ "$TLS_MODE" == "letsencrypt" && ! -f "$CERT" ]]; then
   render_nginx /etc/ipf3/tls/bootstrap.crt /etc/ipf3/tls/bootstrap.key
   nginx -t && systemctl reload-or-restart nginx
   if [[ -n "$EMAIL" ]]; then ACME_ID=(--email "$EMAIL"); else ACME_ID=(--register-unsafely-without-email); fi
-  if certbot certonly --webroot -w /var/www/letsencrypt -d "$DOMAIN" "${ACME_ID[@]}" --agree-tos --non-interactive; then
+  info "Requesting a Let's Encrypt certificate for $DOMAIN"
+  if timeout 240 certbot certonly --webroot -w /var/www/letsencrypt -d "$DOMAIN" "${ACME_ID[@]}" --agree-tos --non-interactive; then
     install -d /etc/letsencrypt/renewal-hooks/deploy
     printf '#!/bin/sh\nsystemctl reload nginx\n' > /etc/letsencrypt/renewal-hooks/deploy/ipf3-nginx.sh
     chmod 0755 /etc/letsencrypt/renewal-hooks/deploy/ipf3-nginx.sh
@@ -252,7 +253,7 @@ if [[ $CONFIGURE_UFW -eq 1 ]]; then
   ufw --force enable
 fi
 
-info "Starting services"
+info "Starting services (API, worker, backups)"
 systemctl enable --now ipf3-api.service ipf3-worker.service ipf3-backup.timer
 for _ in $(seq 1 30); do
   curl -fsS http://127.0.0.1:8000/readyz >/dev/null 2>&1 && break

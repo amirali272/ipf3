@@ -101,8 +101,13 @@ run_step() { # run_step "Label" cmd args...
   local label="$1"; shift
   printf '\n==== %s (%s)\n' "$label" "$(date -Is)" >>"$LOG"
   local from; from=$(wc -l <"$LOG")
+  # Own process group, so Ctrl+C stops the whole step instead of leaving it running unseen.
+  set -m
   ( "$@" ) >>"$LOG" 2>&1 &
   local pid=$! i=0 start=$SECONDS detail="" cols
+  set +m
+  # shellcheck disable=SC2064
+  trap "kill -TERM -- -$pid 2>/dev/null; printf '\n\n   Cancelled. Re-run the installer to continue (it is safe to re-run).\n'; exit 130" INT TERM
   local frames=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
   cols=$(tput cols 2>/dev/null || echo 100)
   if [[ -t 1 ]]; then
@@ -112,11 +117,15 @@ run_step() { # run_step "Label" cmd args...
         detail=$(tail -n +"$from" "$LOG" | grep -a '==>' | tail -n 1 | sed -e 's/\x1b\[[0-9;]*m//g' -e 's/^.*==> //')
       fi
       local frame="${frames[i++ % ${#frames[@]}]}" text="$label${detail:+ - $detail} ($((SECONDS - start))s)"
+      (( SECONDS - start > 60 )) && text+="  · details: tail -f $LOG"
       printf '\r\e[K   %s%s%s %s' "$G" "$frame" "$R" "${text:0:$((cols - 8))}"
       sleep 0.12
     done
   fi
-  if wait "$pid"; then
+  local rc=0
+  wait "$pid" || rc=$?
+  trap - INT TERM
+  if [[ $rc -eq 0 ]]; then
     printf '\r\e[K   %s✔%s %s %s(%ss)%s\n' "$G" "$R" "$label" "$GR" "$((SECONDS - start))" "$R"
   else
     printf '\r\e[K   %s✖%s %s\n\n' "$RED" "$R" "$label"
