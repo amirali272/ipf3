@@ -7,7 +7,7 @@
 #
 # Asks only what it needs (domain, administrator, ...) and runs the scripts in
 # deploy/ with the right options. All output is logged to $LOG.
-set -euo pipefail
+set -Eeuo pipefail
 
 REPO_URL="${UM_REPO_URL:-https://github.com/amirali272/ipf3.git}"
 REPO_BRANCH="${UM_BRANCH:-main}"
@@ -96,25 +96,29 @@ choose() { # choose VAR "option 1" "option 2" ... -> VAR = 1..n
   done
 }
 
+kill_tree() { # kill a process and all its descendants
+  local p
+  for p in $(pgrep -P "$1" 2>/dev/null); do kill_tree "$p"; done
+  kill -TERM "$1" 2>/dev/null || true
+}
+
 # Runs a command with a spinner; output goes to $LOG. On failure, shows the log tail.
 run_step() { # run_step "Label" cmd args...
   local label="$1"; shift
   printf '\n==== %s (%s)\n' "$label" "$(date -Is)" >>"$LOG"
   local from; from=$(wc -l <"$LOG")
   # Own process group, so Ctrl+C stops the whole step instead of leaving it running unseen.
-  set -m
-  ( "$@" ) >>"$LOG" 2>&1 &
+  ( "$@" ) >>"$LOG" 2>&1 </dev/null &
   local pid=$! i=0 start=$SECONDS detail="" cols
-  set +m
   # shellcheck disable=SC2064
-  trap "kill -TERM -- -$pid 2>/dev/null; printf '\n\n   Cancelled. Re-run the installer to continue (it is safe to re-run).\n'; exit 130" INT TERM
+  trap "kill_tree $pid; printf '\n\n   Cancelled. Re-run the installer to continue (it is safe to re-run).\n'; exit 130" INT TERM
   local frames=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
   cols=$(tput cols 2>/dev/null || echo 100)
   if [[ -t 1 ]]; then
     while kill -0 "$pid" 2>/dev/null; do
       # Show the current sub-step ("==> ..." lines written by the deploy scripts).
       if (( i % 8 == 0 )); then
-        detail=$(tail -n +"$from" "$LOG" | grep -a '==>' | tail -n 1 | sed -e 's/\x1b\[[0-9;]*m//g' -e 's/^.*==> //')
+        detail=$( { tail -n +"$from" "$LOG" | grep -a '==>' | tail -n 1 | sed -e 's/\x1b\[[0-9;]*m//g' -e 's/^.*==> //'; } 2>/dev/null || true)
       fi
       local frame="${frames[i++ % ${#frames[@]}]}" text="$label${detail:+ - $detail} ($((SECONDS - start))s)"
       (( SECONDS - start > 60 )) && text+="  · details: tail -f $LOG"
@@ -134,6 +138,9 @@ run_step() { # run_step "Label" cmd args...
     fail "Installation step failed. Fix the problem above and run the installer again (it is safe to re-run)."
   fi
 }
+
+# Never exit silently: report the command and line that failed.
+trap 'rc=$?; printf "\n   \e[38;5;203m✖ Unexpected error (exit %s) at line %s: %s\e[0m\n   Log: %s\n" "$rc" "$LINENO" "$BASH_COMMAND" "$LOG" >&2' ERR
 
 # ----------------------------------------------------------------------------- checks
 [[ $EUID -eq 0 ]] || { echo "Please run as root:  sudo $0"; exit 1; }
@@ -168,7 +175,8 @@ download_src() {
   echo "installer files not found in $REPO_URL"
   return 1
 }
-if [[ ! -x "$REPO/deploy/install-server.sh" ]]; then
+if [[ "$REPO" == "$SRC_DIR" ]]; then
+  # Running via curl: fetch (or update) the source tree so deploy/ matches this installer.
   run_step "Downloading Unknown Monitor" download_src
 fi
 VERSION="$(cat "$REPO/VERSION" 2>/dev/null || echo '?')"
