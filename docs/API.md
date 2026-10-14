@@ -76,6 +76,77 @@ until curl -s -H "Authorization: Bearer $TOKEN" https://ipf3.example.com/api/v1/
 curl -s -H "Authorization: Bearer $TOKEN" https://ipf3.example.com/api/v1/jobs/$JOB | jq '{status, bps, jitter_ms, loss_percent}'
 ```
 
+## VPN API (`/api/v1/vpn`) — for sales / management bots
+
+This is what a Telegram (or other) bot uses to sell and manage VPN accounts: create a
+user, read their usage and links, renew, disable, delete. Same auth as above — bearer
+token, no separate API-key scheme.
+
+**Bot credential.** Create a dedicated account with the `operator` role for the bot
+(`ipf3-server create-user vpnbot --role operator`); operator can manage VPN users but
+not panel admins, nodes or server settings. Log in once to get a session JWT and use
+it as a long-lived bearer token — `session_ttl_minutes` (default 720 = 12h) controls
+how long it lasts, so either re-login when a request gets 401, or raise
+`IPF3_SESSION_TTL_MINUTES` for a bot account. Treat the token like a password: keep it
+server-side only.
+
+Role in brackets: V = viewer, O = operator, A = admin.
+
+| Method & path | Role | Description |
+|---|---|---|
+| `GET /vpn/users?search&status` | V | List users (`status` ∈ `active,expired,limited,disabled,online`) |
+| `POST /vpn/users` | O | Create — `{username, data_limit_gb, expire_days, inbound_ids, note}`. `inbound_ids: null` = all inbounds |
+| `GET /vpn/users/{id}` | V | One user |
+| `PATCH /vpn/users/{id}` | O | Partial update — same fields, plus `clear_expire`, `all_inbounds` |
+| `DELETE /vpn/users/{id}` | O | Delete |
+| `POST /vpn/users/{id}/reset-traffic` | O | Zero `used_up`/`used_down` |
+| `POST /vpn/users/{id}/revoke` | O | New `uuid`/`password`/`sub_token` — invalidates old configs and the old sub link |
+| `GET /vpn/users/{id}/links` | V | `{links: [share links...]}` for every enabled inbound the user can use |
+| `GET /vpn/users/{id}/usage?days` | V | Daily up/down bytes |
+| `GET /vpn/users/{id}/activity` | V | Connected IPs right now (per node) and client apps that fetched the subscription |
+| `GET /vpn/overview` | V | Fleet totals: users by status, traffic, top users |
+| `GET /vpn/nodes` | V | Nodes with Xray state (`online`, `running`, `in_sync`, `inbounds`, `online_users`) |
+| `GET /vpn/inbounds` | V | Inbounds with per-inbound traffic and online count |
+| `POST/PUT/DELETE /vpn/inbounds[/{id}]` | A | Inbound CRUD (needed once per node/protocol, not per sale) |
+| `GET/POST/PUT/DELETE /vpn/outbounds[/{id}]` | A | Outbounds from a share link or JSON (see [docs/VPN.md](VPN.md)) |
+| `GET/POST/PUT/DELETE /vpn/routing[/{id}]` · `POST /vpn/routing/order` | A | Routing rules |
+
+A created or fetched user's `VpnUserOut` has everything a bot message needs directly:
+`status`, `data_limit`/`used`/`used_up`/`used_down` (bytes), `expire_at`, `enabled`,
+`online`, `online_ips`, `sub_url` (the one link to hand the customer — it serves base64,
+clash YAML or a browser status page depending on the client). You don't need
+`/vpn/users/{id}/links` unless you want to send raw per-protocol configs instead of the
+subscription link.
+
+### Example: sell a plan (Telegram bot flow)
+
+```bash
+TOKEN=...   # bearer token for the vpnbot account, obtained once via /api/v1/auth/login
+
+# 1) create a 30-day, 50 GB account named after the Telegram user id
+curl -s -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"username":"tg_123456789","data_limit_gb":50,"expire_days":30,"note":"tg:123456789"}' \
+  https://ipf3.example.com/api/v1/vpn/users | jq '{id, sub_url, expire_at}'
+
+# 2) later: check remaining usage before renewal
+curl -s -H "Authorization: Bearer $TOKEN" \
+  https://ipf3.example.com/api/v1/vpn/users/<id> | jq '{status, used, data_limit, expire_at}'
+
+# 3) renew: add 30 more days and reset the data counter
+curl -s -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -X PATCH -d '{"expire_days":30}' https://ipf3.example.com/api/v1/vpn/users/<id>
+curl -s -H "Authorization: Bearer $TOKEN" -X POST \
+  https://ipf3.example.com/api/v1/vpn/users/<id>/reset-traffic
+
+# 4) non-payment: disable (keeps history) rather than delete
+curl -s -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -X PATCH -d '{"enabled":false}' https://ipf3.example.com/api/v1/vpn/users/<id>
+```
+
+`username` must match `^[A-Za-z0-9_.-]{2,64}$` and be unique; a 409 means it's taken —
+append the Telegram id or similar instead of retrying with the same name.
+`data_limit_gb: 0` and omitting `expire_days` both mean unlimited/no-expiry.
+
 ## Agent protocol (`/api/agent/v1`)
 
 Every request except enrollment carries `Authorization: Bearer <agent_id>.<secret>`.
