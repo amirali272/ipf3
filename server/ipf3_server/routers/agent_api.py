@@ -29,6 +29,9 @@ from ..models import (
     XrayNodeState,
     XrayOutbound,
     XrayRoutingRule,
+    WgInbound,
+    WgNodeState,
+    WgPeer,
 )
 from ..schemas import (
     AgentJobOut,
@@ -44,8 +47,9 @@ from ..security import hash_token, random_token
 from ..services.parsers import ParseError, parse_job
 from ..services.ratelimit import enroll_limiter
 from ..services import xray as xray_svc
+from ..services import wireguard as wg_svc
 from ..services.usage import usage_day
-from ..vpn_schemas import API_PORT, XrayStateIn, XrayStatsIn
+from ..vpn_schemas import API_PORT, WgStateIn, WgStatsIn, XrayStateIn, XrayStatsIn
 
 router = APIRouter(prefix="/agent/v1", tags=["agent"])
 
@@ -346,6 +350,94 @@ async def xray_stats(body: XrayStatsIn, agent: Agent = Depends(current_agent), d
     rows = []
     for u in users:
         t = deltas[u.id]
+        u.used_up += t.up
+        u.used_down += t.down
+        u.lifetime_used += t.up + t.down
+        u.last_online_at = now
+        rows.append({"user_id": u.id, "day": day, "up": t.up, "down": t.down})
+    if rows:
+        stmt = pg_insert(VpnUserTrafficDaily).values(rows)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[VpnUserTrafficDaily.user_id, VpnUserTrafficDaily.day],
+            set_={"up": VpnUserTrafficDaily.up + stmt.excluded.up, "down": VpnUserTrafficDaily.down + stmt.excluded.down},
+        )
+        await db.execute(stmt)
+    await db.commit()
+
+
+# ============================================================================ WireGuard (VPN)
+@router.get("/wireguard/config")
+async def wireguard_config(
+    hash: str | None = Query(None, max_length=64),
+    agent: Agent = Depends(current_agent),
+    db: AsyncSession = Depends(get_session),
+):
+    """Desired wg0.conf for this node. 204 when there's none, or the agent already has it."""
+    from fastapi import Response
+
+    inbound = await db.get(WgInbound, agent.id)
+    await db.commit()  # persist last_seen_at
+    if inbound is None:
+        return Response(status_code=204)
+    peers = (await db.execute(select(WgPeer).where(WgPeer.agent_id == agent.id))).scalars().all()
+    text = wg_svc.build_server_config(inbound, peers)
+    h = wg_svc.config_hash(text)
+    if hash == h:
+        return Response(status_code=204)
+    return {"hash": h, "config": text}
+
+
+@router.post("/wireguard/state", status_code=204)
+async def wireguard_state(body: WgStateIn, agent: Agent = Depends(current_agent), db: AsyncSession = Depends(get_session)):
+    now = datetime.now(timezone.utc)
+    values = {"running": body.running, "error": body.error, "updated_at": now}
+    if body.applied_hash:
+        values["applied_hash"] = body.applied_hash
+        values["applied_at"] = now
+    stmt = pg_insert(WgNodeState).values(agent_id=agent.id, **values)
+    stmt = stmt.on_conflict_do_update(index_elements=[WgNodeState.agent_id], set_=values)
+    await db.execute(stmt)
+    if body.handshakes:
+        peers = (await db.execute(select(WgPeer).where(WgPeer.agent_id == agent.id))).scalars().all()
+        touched = {p.user_id for p in peers}
+        for p in peers:
+            ts = body.handshakes.get(p.public_key)
+            if ts:
+                p.last_handshake_at = datetime.fromtimestamp(ts, timezone.utc)
+        if touched:
+            await db.execute(update(VpnUser).where(VpnUser.id.in_(touched)).values(last_online_at=now))
+    await db.commit()
+
+
+@router.post("/wireguard/stats", status_code=204)
+async def wireguard_stats(body: WgStatsIn, agent: Agent = Depends(current_agent), db: AsyncSession = Depends(get_session)):
+    """Per-peer traffic deltas (bytes), counted toward each user's overall usage and
+    limits the same way Xray traffic is."""
+    now = datetime.now(timezone.utc)
+    day = usage_day(now)
+    if not body.peers:
+        await db.commit()
+        return
+    peers = (
+        await db.execute(select(WgPeer).where(WgPeer.agent_id == agent.id, WgPeer.public_key.in_(list(body.peers))))
+    ).scalars().all()
+    if not peers:
+        await db.commit()
+        return
+    users = {
+        u.id: u
+        for u in (await db.execute(select(VpnUser).where(VpnUser.id.in_({p.user_id for p in peers})).with_for_update())).scalars()
+    }
+    rows = []
+    for p in peers:
+        t = body.peers[p.public_key]
+        if not (t.up or t.down):
+            continue
+        p.up += t.up
+        p.down += t.down
+        u = users.get(p.user_id)
+        if u is None:
+            continue
         u.used_up += t.up
         u.used_down += t.down
         u.lifetime_used += t.up + t.down

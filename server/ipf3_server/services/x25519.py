@@ -51,17 +51,26 @@ def _unb64(s: str) -> bytes:
     return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
 
 
-def public_key(private_b64: str) -> str:
-    priv = _unb64(private_b64)
-    if len(priv) != 32:
-        raise ValueError("private key must be 32 bytes")
-    return _b64(_x25519(priv, (9).to_bytes(32, "little")))
-
-
-def generate_keypair() -> tuple[str, str]:
+def raw_private() -> bytes:
+    """A random clamped Curve25519 scalar, as raw bytes (RFC 7748)."""
     priv = bytearray(secrets.token_bytes(32))
     priv[0] &= 248
     priv[31] &= 127
     priv[31] |= 64
-    p = _b64(bytes(priv))
-    return p, public_key(p)
+    return bytes(priv)
+
+
+def raw_public(priv: bytes) -> bytes:
+    if len(priv) != 32:
+        raise ValueError("private key must be 32 bytes")
+    return _x25519(priv, (9).to_bytes(32, "little"))
+
+
+def public_key(private_b64: str) -> str:
+    return _b64(raw_public(_unb64(private_b64)))
+
+
+def generate_keypair() -> tuple[str, str]:
+    """base64url, no padding — the encoding `xray x25519` and REALITY use."""
+    priv = raw_private()
+    return _b64(priv), _b64(raw_public(priv))

@@ -426,3 +426,130 @@ class RuleOut(RuleIn):
 
 class RuleOrderIn(BaseModel):
     ids: list[int] = Field(max_length=10000)
+
+
+# ----------------------------------------------------------------------------- wireguard
+_DNS_LIST = re.compile(r"^[A-Za-z0-9.:,\s-]{0,255}$")
+
+
+class WgInboundIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    agent_id: str
+    remark: str = Field(min_length=1, max_length=128)
+    listen_port: int = Field(ge=1, le=65535)
+    network: str
+    address: str = Field(min_length=1, max_length=255)
+    dns: str = Field("1.1.1.1", max_length=255)
+    mtu: int = Field(1420, ge=576, le=9000)
+    persistent_keepalive: int = Field(25, ge=0, le=3600)
+    egress_iface: str = Field("", max_length=32, pattern=r"^[A-Za-z0-9@_.-]{0,32}$")
+    enabled: bool = True
+
+    @field_validator("address")
+    @classmethod
+    def _addr(cls, v: str) -> str:
+        return validate_host(v)
+
+    @field_validator("network")
+    @classmethod
+    def _network(cls, v: str) -> str:
+        try:
+            net = ipaddress.ip_network(v, strict=True)
+        except ValueError as e:
+            raise ValueError("network must be a CIDR, e.g. 10.70.0.0/24") from e
+        if net.version != 4 or net.num_addresses < 4 or net.prefixlen < 16:
+            raise ValueError("use an IPv4 /16-/30 private network, e.g. 10.70.0.0/24")
+        if not net.is_private:
+            raise ValueError("use a private network (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16)")
+        return str(net)
+
+    @field_validator("dns")
+    @classmethod
+    def _dns(cls, v: str) -> str:
+        v = v.strip()
+        if v and not _DNS_LIST.match(v):
+            raise ValueError("invalid DNS list")
+        return v
+
+
+class WgInboundOut(BaseModel):
+    agent_id: str
+    agent_name: str = ""
+    online: bool = False
+    remark: str
+    listen_port: int
+    network: str
+    address: str
+    dns: str
+    mtu: int
+    persistent_keepalive: int
+    egress_iface: str
+    public_key: str
+    enabled: bool
+    created_at: datetime
+    peers: int = 0
+    online_peers: int = 0
+    up: int = 0
+    down: int = 0
+    running: bool = False
+    error: str | None = None
+    in_sync: bool = False
+    applied_at: datetime | None = None
+
+
+class WgPeerIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    user_id: int
+
+
+class WgPeerOut(BaseModel):
+    id: int
+    agent_id: str
+    user_id: int
+    username: str = ""
+    address: str
+    enabled: bool
+    up: int
+    down: int
+    online: bool = False
+    last_handshake_at: datetime | None
+    created_at: datetime
+
+
+class WgPeerConfig(BaseModel):
+    config: str
+    qr_text: str
+
+
+# ----------------------------------------------------------------------------- wireguard agent protocol
+def _b64_pubkey(key: str) -> bool:
+    import base64
+
+    try:
+        return len(base64.b64decode(key, validate=True)) == 32
+    except ValueError:
+        return False
+
+
+class WgStateIn(BaseModel):
+    applied_hash: str | None = Field(None, max_length=64)
+    running: bool = False
+    error: str | None = Field(None, max_length=4000)
+    # pubkey(b64) -> latest handshake, unix seconds (0 / absent = never)
+    handshakes: dict[str, int] = Field(default_factory=dict, max_length=100000)
+
+    @field_validator("handshakes")
+    @classmethod
+    def _handshakes(cls, v: dict[str, int]) -> dict[str, int]:
+        return {k: max(0, int(ts)) for k, ts in v.items() if _b64_pubkey(k)}
+
+
+class WgStatsIn(BaseModel):
+    # pubkey(b64) -> traffic deltas (bytes) since the last successful report
+    peers: dict[str, XrayTraffic] = Field(default_factory=dict, max_length=100000)
+
+    @field_validator("peers")
+    @classmethod
+    def _peers(cls, v: dict[str, XrayTraffic]) -> dict[str, XrayTraffic]:
+        return {k: t for k, t in v.items() if _b64_pubkey(k)}
