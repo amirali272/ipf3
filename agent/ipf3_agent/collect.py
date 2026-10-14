@@ -88,6 +88,7 @@ def detect_tools() -> dict[str, bool]:
         "ip": shutil.which("ip") is not None,
         "ss": shutil.which("ss") is not None,
         "xray": _xray_installed(),
+        "wireguard": _wireguard_installed(),
     }
 
 
@@ -95,6 +96,12 @@ def _xray_installed() -> bool:
     from . import xray
 
     return xray.installed()
+
+
+def _wireguard_installed() -> bool:
+    from . import wireguard
+
+    return wireguard.installed()
 
 
 def system_info(name: str = "") -> dict:

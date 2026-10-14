@@ -12,7 +12,7 @@ import httpx
 from . import __version__
 from .collect import MetricsCollector, NetRateMeter, host_inventory, system_info
 from .config import AgentConfig
-from . import xray
+from . import wireguard, xray
 from .tools import JobError, execute
 
 log = logging.getLogger("ipf3.agent")
@@ -63,6 +63,8 @@ class Agent:
         self.xray_traffic = xray.TrafficCounter()
         self.xray_api_port = 10085
         self.xray_error: str | None = None
+        self.wg_traffic = wireguard.TrafficCounter()
+        self.wg_error: str | None = None
 
     async def _request(self, method: str, url: str, **kw) -> httpx.Response:
         r = await self.client.request(method, url, **kw)
@@ -149,6 +151,46 @@ class Agent:
             },
         )
 
+    async def wireguard_sync(self) -> None:
+        """Pull the desired wg0.conf, apply it if changed, push peer traffic and
+        state. Applying and reading live peer state both need root/CAP_NET_ADMIN,
+        which this process doesn't have, so a separate privileged reload service
+        and stats timer do that (see deploy/install-wireguard.sh); this only writes
+        the desired file and reads the stats file they produce."""
+        if not wireguard.installed():
+            return
+        have = wireguard.current_hash()
+        r = await self._request("GET", "/wireguard/config", params={"hash": have} if have else None)
+        applied = None
+        if r.status_code == 200:
+            body = r.json()
+            err = await wireguard.apply(body["config"], body["hash"])
+            self.wg_error = err
+            if err is None:
+                applied = body["hash"]
+                log.info("applied new WireGuard config %s", body["hash"][:12])
+            else:
+                log.warning("WireGuard config rejected: %s", err)
+        peers = wireguard.read_dump()
+        self.wg_traffic.update(peers)
+        pending = self.wg_traffic.take()
+        if pending:
+            try:
+                await self._request("POST", "/wireguard/stats", json={"peers": pending})
+            except BaseException:
+                self.wg_traffic.restore(pending)
+                raise
+        await self._request(
+            "POST",
+            "/wireguard/state",
+            json={
+                "applied_hash": applied or wireguard.current_hash(),
+                "running": await wireguard.is_running(),
+                "error": self.wg_error,
+                "handshakes": {k: v["handshake"] for k, v in peers.items() if v.get("handshake")},
+            },
+        )
+
     async def send_inventory(self) -> None:
         inv = await asyncio.to_thread(host_inventory, self.cfg.max_connections_reported)
         await self._request("POST", "/inventory", json=inv)
@@ -214,6 +256,7 @@ class Agent:
             asyncio.create_task(self._periodic("metrics", self.cfg.metrics_interval, self.send_metrics)),
             asyncio.create_task(self._periodic("live", self.cfg.live_interval, self.send_live)),
             asyncio.create_task(self._periodic("xray", 10.0, self.xray_sync)),
+            asyncio.create_task(self._periodic("wireguard", 10.0, self.wireguard_sync)),
             asyncio.create_task(self._periodic("inventory", self.cfg.inventory_interval, self.send_inventory)),
             asyncio.create_task(self._periodic("heartbeat", self.cfg.heartbeat_interval, self.send_heartbeat)),
             asyncio.create_task(self.poll_jobs()),
