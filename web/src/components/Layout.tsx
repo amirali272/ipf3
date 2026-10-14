@@ -11,6 +11,7 @@ import {
   Network,
   ScrollText,
   Search,
+  Radio,
   Route,
   Server,
   Settings,
@@ -223,6 +224,7 @@ export default function Layout() {
         { to: "/vpn/users", label: "Users", icon: Users },
         { to: "/vpn/inbounds", label: "Inbounds & nodes", icon: Network },
         { to: "/vpn/outbounds", label: "Outbounds & routing", icon: Route },
+        { to: "/vpn/wireguard", label: "WireGuard", icon: Radio },
       ],
     },
     {

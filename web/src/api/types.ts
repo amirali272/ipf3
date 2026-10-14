@@ -460,3 +460,42 @@ export interface RoutingRule {
   protocols: ("http" | "tls" | "quic" | "bittorrent")[];
   enabled: boolean;
 }
+
+export interface WgInbound {
+  agent_id: string;
+  agent_name: string;
+  online: boolean;
+  remark: string;
+  listen_port: number;
+  network: string;
+  address: string;
+  dns: string;
+  mtu: number;
+  persistent_keepalive: number;
+  egress_iface: string;
+  public_key: string;
+  enabled: boolean;
+  created_at: string;
+  peers: number;
+  online_peers: number;
+  up: number;
+  down: number;
+  running: boolean;
+  error: string | null;
+  in_sync: boolean;
+  applied_at: string | null;
+}
+
+export interface WgPeer {
+  id: number;
+  agent_id: string;
+  user_id: number;
+  username: string;
+  address: string;
+  enabled: boolean;
+  up: number;
+  down: number;
+  online: boolean;
+  last_handshake_at: string | null;
+  created_at: string;
+}

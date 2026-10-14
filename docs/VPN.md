@@ -83,6 +83,32 @@ a firewall, open the inbound port, for example `ufw allow 8443`.
 Configs block access to private networks (`geoip:private`, which includes the node's
 localhost services) and BitTorrent.
 
+## WireGuard
+
+**VPN → WireGuard** manages native WireGuard peers alongside Xray, using the OS's own
+`wg`/`wg-quick` — not an Xray inbound (Xray-core has no WireGuard inbound). One wg0
+interface per node:
+
+1. **Add WireGuard inbound**: node, UDP listen port, a private peer network (e.g.
+   `10.70.0.0/24`), the public address clients connect to, and the DNS pushed to
+   clients. The egress interface for NAT is auto-detected from the node's routes, or
+   set it explicitly if a node has multiple NICs.
+2. **Add peer**, per user. The panel generates both the server's and the peer's
+   Curve25519 keypair plus a pre-shared key and allocates the next free address in the
+   network — WireGuard needs the client's private key, unlike Xray, so there's no
+   "subscription link" here, just a config to copy, download or scan as a QR in the
+   official WireGuard app.
+
+Traffic and online status come from `wg show`, which needs root — a privileged helper
+installed by `install-wireguard.sh` dumps it to a file the agent reads, the same
+two-stage privilege split as the Xray config reload path. Peer traffic counts toward
+the same per-user usage, limits and expiry as Xray.
+
+**Prefer WireGuard when you need near-line-rate speed, a router/whole-device tunnel,
+or the native OS client — not for deep-packet-inspection-censored networks.** Its
+packet format is far easier to fingerprint than VLESS + REALITY/XHTTP, which is what
+survives there.
+
 ## Who is connected
 
 **Connected IPs.** Every ~10 s, each node reads Xray's per-user online IP list
