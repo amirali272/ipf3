@@ -1,0 +1,8 @@
+[Unit]
+Description=Dump WireGuard peer statistics for the agent to read
+
+[Service]
+Type=oneshot
+RuntimeDirectory=ipf3-wg
+RuntimeDirectoryPreserve=yes
+ExecStart=/opt/ipf3-agent/wg-stats.sh

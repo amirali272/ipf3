@@ -40,8 +40,10 @@ RemoveIPC=yes
 SystemCallArchitectures=native
 SystemCallFilter=@system-service
 ReadOnlyPaths=/
-# The agent writes the Xray config it receives from the panel (VPN nodes only).
-ReadWritePaths=-/etc/ipf3/xray
+# The agent writes the Xray/WireGuard config it receives from the panel (VPN
+# nodes only). It also reads /run/ipf3-wg/stats.dump, written by a separate
+# privileged timer — plain reads are already allowed under ProtectSystem=strict.
+ReadWritePaths=-/etc/ipf3/xray -/etc/ipf3/wireguard
 InaccessiblePaths=-/root -/var/lib/postgresql -/etc/ssh -/etc/shadow -/etc/gshadow
 LimitNOFILE=8192
 TasksMax=128

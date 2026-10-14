@@ -1,0 +1,9 @@
+[Unit]
+Description=Reload WireGuard when the panel pushes a new configuration
+
+[Path]
+PathChanged=/etc/ipf3/wireguard/wg0.conf
+Unit=ipf3-wireguard-reload.service
+
+[Install]
+WantedBy=multi-user.target

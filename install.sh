@@ -410,7 +410,7 @@ case "$MODE" in
       echo "Timezone     $TIMEZONE"
       if [[ "$MODE" == 1 ]]; then
         extras=""
-        [[ $XRAY -eq 1 ]] && extras+=" + VPN (Xray)"
+        [[ $XRAY -eq 1 ]] && extras+=" + VPN (Xray + WireGuard)"
         [[ $IPERF -eq 1 ]] && extras+=" + iperf3"
         echo "This server  $AGENT_NAME$extras"
       fi
@@ -488,6 +488,10 @@ case "$MODE" in
         fi
       elif confirm "Update Xray-core to the latest release?" n; then
         run_step "Updating Xray-core" "$REPO/deploy/install-xray.sh"
+      fi
+      if [[ ! -f /etc/systemd/system/ipf3-wireguard-reload.service ]] && confirm "Turn this server into a WireGuard node too?" y; then
+        run_step "Installing WireGuard support" "$REPO/deploy/install-wireguard.sh"
+        run_step "Restarting agent" systemctl restart ipf3-agent.service
       fi
     fi
     [[ $found -eq 1 ]] || fail "No existing installation found on this server."

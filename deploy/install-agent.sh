@@ -2,9 +2,11 @@
 # Install ipf3-agent on an Ubuntu server and enroll it with the IPF3 server.
 #
 #   sudo ./deploy/install-agent.sh --server https://ipf3.example.com --token ipf3e_xxx [--name edge-1]
-#                                  [--ca-file /path/ca.pem] [--iperf3-server [--iperf3-port 5201]] [--xray]
+#                                  [--ca-file /path/ca.pem] [--iperf3-server [--iperf3-port 5201]] [--xray] [--wireguard]
 #
 # --xray turns the server into a VPN node: installs Xray-core managed by the panel.
+# --xray implies --wireguard (WireGuard peers are also managed by the panel) unless
+# --wireguard is passed explicitly; pass --wireguard alone for WireGuard without Xray.
 #
 # Re-running upgrades the agent code in place and keeps the existing enrollment.
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
@@ -15,6 +17,7 @@ NAME="$(hostname -s)"
 CA_FILE=""
 IPERF3_SERVER=0
 XRAY=0
+WIREGUARD=-1
 IPERF3_PORT=5201
 REENROLL=0
 
@@ -26,6 +29,8 @@ while [[ $# -gt 0 ]]; do
     --ca-file) CA_FILE="$2"; shift 2 ;;
     --iperf3-server) IPERF3_SERVER=1; shift ;;
     --xray) XRAY=1; shift ;;
+    --wireguard) WIREGUARD=1; shift ;;
+    --no-wireguard) WIREGUARD=0; shift ;;
     --iperf3-port) IPERF3_PORT="$2"; shift 2 ;;
     --reenroll) REENROLL=1; shift ;;
     -h|--help) sed -n '2,7p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
@@ -107,8 +112,12 @@ if [[ $IPERF3_SERVER -eq 1 ]]; then
   systemctl disable --now iperf3.service >/dev/null 2>&1 || true
 fi
 systemctl daemon-reload
+[[ $WIREGUARD -eq -1 ]] && WIREGUARD=$XRAY
 if [[ $XRAY -eq 1 ]]; then
   "$REPO/deploy/install-xray.sh"
+fi
+if [[ $WIREGUARD -eq 1 ]]; then
+  "$REPO/deploy/install-wireguard.sh"
 fi
 systemctl enable ipf3-agent.service
 systemctl restart ipf3-agent.service

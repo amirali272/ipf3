@@ -20,6 +20,16 @@ if [[ -f /etc/systemd/system/ipf3-xray.service ]]; then
   install -m 0644 "$REPO/deploy/systemd/ipf3-xray.service" "$REPO/deploy/systemd/ipf3-xray-config.path" \
     "$REPO/deploy/systemd/ipf3-xray-reload.service" /etc/systemd/system/
 fi
+if [[ -d /etc/ipf3/wireguard ]]; then
+  chown ipf3-agent:ipf3-agent /etc/ipf3/wireguard && chmod 0750 /etc/ipf3/wireguard
+fi
+if [[ -f /etc/systemd/system/ipf3-wireguard-reload.service ]]; then
+  install -m 0755 -o root -g root "$REPO/deploy/wg-stats.sh" /opt/ipf3-agent/wg-stats.sh
+  install -d -m 0755 /etc/systemd/system/wg-quick@wg0.service.d
+  install -m 0644 "$REPO/deploy/systemd/wg-quick@wg0.service.d/ipf3.conf" /etc/systemd/system/wg-quick@wg0.service.d/
+  install -m 0644 "$REPO/deploy/systemd/ipf3-wireguard-config.path" "$REPO/deploy/systemd/ipf3-wireguard-reload.service" \
+    "$REPO/deploy/systemd/ipf3-wireguard-stats.service" "$REPO/deploy/systemd/ipf3-wireguard-stats.timer" /etc/systemd/system/
+fi
 systemctl daemon-reload
 systemctl restart ipf3-agent.service
 sleep 2

@@ -1,0 +1,13 @@
+[Unit]
+Description=Apply a new WireGuard configuration
+StartLimitIntervalSec=60
+StartLimitBurst=20
+
+[Service]
+Type=oneshot
+# wg-quick@wg0 reads /etc/wireguard/wg0.conf, which only root can access; the agent
+# (unprivileged) writes its desired config to /etc/ipf3/wireguard/wg0.conf instead,
+# and this root-run step installs it into place and restarts the interface.
+ExecStart=/usr/bin/install -m 0600 -o root -g root /etc/ipf3/wireguard/wg0.conf /etc/wireguard/wg0.conf
+ExecStart=-/bin/systemctl reset-failed wg-quick@wg0.service
+ExecStart=/bin/systemctl restart wg-quick@wg0.service
